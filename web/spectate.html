@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NovaRemote Live Spectator</title>
+    <style>
+      :root {
+        --bg: #060512;
+        --card: #0f1324;
+        --line: #26304f;
+        --accent: #27d9ff;
+        --accent2: #ff2ea6;
+        --text: #e7f0ff;
+        --muted: #9ab0d2;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(circle at top, #141434 0%, var(--bg) 55%);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        padding: 18px;
+      }
+      .wrap {
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      .card {
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, #111735, var(--card));
+        border-radius: 14px;
+        padding: 14px;
+        box-shadow: 0 24px 42px rgba(0, 0, 0, 0.35);
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .title {
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .status {
+        font-size: 12px;
+        font-weight: 600;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 6px 10px;
+      }
+      .status.live {
+        color: #c8fff6;
+        border-color: #13a577;
+        background: rgba(19, 165, 119, 0.18);
+      }
+      .status.dead {
+        color: #ffd5e9;
+        border-color: #d14181;
+        background: rgba(209, 65, 129, 0.2);
+      }
+      .terminal {
+        margin-top: 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #050912;
+        color: #c8f8ff;
+        min-height: 55vh;
+        max-height: 72vh;
+        overflow: auto;
+        padding: 14px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 13px;
+        line-height: 1.45;
+        font-family: "SF Mono", Menlo, Consolas, monospace;
+      }
+      .footer {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+      }
+      .footer .brand {
+        color: var(--accent);
+        font-weight: 700;
+      }
+      .warn {
+        color: #ffb5cd;
+      }
+      @media (max-width: 720px) {
+        body {
+          padding: 10px;
+        }
+        .terminal {
+          min-height: 62vh;
+          font-size: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <div class="row">
+          <div>
+            <div class="title">Live Session Spectator</div>
+            <div class="sub" id="sessionLabel">Session: -</div>
+          </div>
+          <div class="status" id="statusPill">Connecting...</div>
+        </div>
+        <pre class="terminal" id="terminal">Waiting for stream...</pre>
+        <div class="footer">
+          Read-only mirror. <span class="brand">Powered by NovaRemote</span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const session = (params.get("session") || "").trim();
+      const token = (params.get("token") || "").trim();
+      const terminalEl = document.getElementById("terminal");
+      const statusEl = document.getElementById("statusPill");
+      const sessionLabelEl = document.getElementById("sessionLabel");
+
+      function setStatus(text, live) {
+        statusEl.textContent = text;
+        statusEl.className = "status " + (live ? "live" : "dead");
+      }
+
+      if (!session || !token) {
+        setStatus("Invalid link", false);
+        terminalEl.innerHTML = '<span class="warn">This spectator link is missing a session or token.</span>';
+        throw new Error("Missing session/token");
+      }
+
+      sessionLabelEl.textContent = "Session: " + session;
+
+      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+      const streamUrl = `${protocol}://${window.location.host}/spectate/stream?session=${encodeURIComponent(session)}&token=${encodeURIComponent(token)}`;
+
+      let output = "";
+      let retries = 0;
+      let socket = null;
+      let closedByServer = false;
+
+      function render() {
+        terminalEl.textContent = output || "Waiting for terminal output...";
+        terminalEl.scrollTop = terminalEl.scrollHeight;
+      }
+
+      function connect() {
+        setStatus(retries > 0 ? "Reconnecting..." : "Connecting...", true);
+        socket = new WebSocket(streamUrl);
+
+        socket.addEventListener("open", () => {
+          retries = 0;
+          setStatus("Live", true);
+        });
+
+        socket.addEventListener("message", (event) => {
+          let message;
+          try {
+            message = JSON.parse(event.data);
+          } catch {
+            return;
+          }
+          if (!message || message.session !== session) {
+            return;
+          }
+          if (message.type === "snapshot") {
+            output = message.data || "";
+            render();
+            return;
+          }
+          if (message.type === "delta") {
+            output += message.data || "";
+            render();
+            return;
+          }
+          if (message.type === "session_closed") {
+            closedByServer = true;
+            setStatus("Session closed", false);
+            return;
+          }
+          if (message.type === "error") {
+            setStatus("Stream error", false);
+            if (message.data) {
+              output += `\n\n[spectate error] ${message.data}`;
+              render();
+            }
+          }
+        });
+
+        socket.addEventListener("close", () => {
+          if (closedByServer) {
+            return;
+          }
+          retries += 1;
+          setStatus("Disconnected", false);
+          const delay = Math.min(700 * Math.pow(1.5, retries - 1), 6000);
+          setTimeout(connect, delay);
+        });
+
+        socket.addEventListener("error", () => {
+          setStatus("Connection error", false);
+        });
+      }
+
+      connect();
+    </script>
+  </body>
+</html>
