@@ -1,11 +1,49 @@
+import contextlib
+import json
 import os
+import socket
+import threading
+import time
 import unittest
 from unittest.mock import AsyncMock, patch
+import urllib.error
+import urllib.request
+
+import uvicorn
 
 os.environ.setdefault("CODEXREMOTE_TOKEN", "test-token")
 
 from app import server
 from app.server import _is_allowed_agent_proxy_path, _normalize_agent_proxy_path
+
+
+@contextlib.contextmanager
+def _serve_app():
+    original_ensure_enabled = server._ensure_novaadapt_enabled
+    server._ensure_novaadapt_enabled = lambda: None
+
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+
+    runner = uvicorn.Server(uvicorn.Config(server.app, host="127.0.0.1", port=port, log_level="error"))
+    thread = threading.Thread(target=runner.run, daemon=True)
+    thread.start()
+    try:
+        for _ in range(50):
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=0.2):
+                    break
+            except Exception:
+                time.sleep(0.1)
+        else:
+            raise AssertionError("Timed out waiting for companion server test app to start.")
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        runner.should_exit = True
+        thread.join(timeout=2)
+        server._ensure_novaadapt_enabled = original_ensure_enabled
 
 
 class AgentProxyHelpersTest(unittest.TestCase):
@@ -128,6 +166,39 @@ class AgentCapabilitiesRouteTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(first["cached"])
         self.assertFalse(second["cached"])
         self.assertEqual(probe_mock.await_count, 10)
+
+
+class AgentProxyHttpRouteTest(unittest.TestCase):
+    def test_denied_routes_return_404_over_http(self) -> None:
+        denied_routes = [
+            ("GET", "/browser/status"),
+            ("GET", "/mobile/status"),
+            ("POST", "/voice/transcribe"),
+            ("POST", "/execute/vision"),
+        ]
+
+        with _serve_app() as base_url:
+            for method, path in denied_routes:
+                with self.subTest(method=method, path=path):
+                    body = b"{}" if method == "POST" else None
+                    request = urllib.request.Request(
+                        f"{base_url}/agents{path}",
+                        data=body,
+                        headers={
+                            "Authorization": "Bearer test-token",
+                            "Content-Type": "application/json",
+                        },
+                        method=method,
+                    )
+                    with self.assertRaises(urllib.error.HTTPError) as raised:
+                        urllib.request.urlopen(request, timeout=1)
+                    error = raised.exception
+                    try:
+                        self.assertEqual(error.code, 404)
+                        payload = json.loads(error.read().decode("utf-8"))
+                        self.assertEqual(payload["detail"], "Unsupported NovaAdapt route.")
+                    finally:
+                        error.close()
 
 
 if __name__ == "__main__":
