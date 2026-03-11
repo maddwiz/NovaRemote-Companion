@@ -19,6 +19,9 @@ class AgentProxyHelpersTest(unittest.TestCase):
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/jobs/job-1/stream"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/plans/plan-1"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/plans/plan-1/stream"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/templates"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/templates/template-1"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/gallery"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/events"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/events/stream"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/memory/status"))
@@ -32,6 +35,8 @@ class AgentProxyHelpersTest(unittest.TestCase):
         self.assertTrue(_is_allowed_agent_proxy_path("POST", "/plans"))
         self.assertTrue(_is_allowed_agent_proxy_path("POST", "/plans/plan-1/approve_async"))
         self.assertTrue(_is_allowed_agent_proxy_path("POST", "/plans/plan-1/reject"))
+        self.assertTrue(_is_allowed_agent_proxy_path("POST", "/templates/import"))
+        self.assertTrue(_is_allowed_agent_proxy_path("POST", "/templates/template-1/launch"))
         self.assertTrue(_is_allowed_agent_proxy_path("POST", "/memory/recall"))
         self.assertTrue(_is_allowed_agent_proxy_path("POST", "/runtime/governance"))
         self.assertTrue(_is_allowed_agent_proxy_path("POST", "/runtime/jobs/cancel_all"))
@@ -41,6 +46,7 @@ class AgentProxyHelpersTest(unittest.TestCase):
 
     def test_rejects_unsupported_routes(self) -> None:
         self.assertFalse(_is_allowed_agent_proxy_path("GET", "/ws"))
+        self.assertFalse(_is_allowed_agent_proxy_path("GET", "/templates/template-1/launch"))
         self.assertFalse(_is_allowed_agent_proxy_path("POST", "/jobs/job-1"))
         self.assertFalse(_is_allowed_agent_proxy_path("POST", "/terminal/sessions/term-1/output"))
 

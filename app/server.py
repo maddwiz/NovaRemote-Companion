@@ -157,6 +157,8 @@ def _is_allowed_agent_proxy_path(method: str, path: str) -> bool:
         "/health",
         "/jobs",
         "/plans",
+        "/templates",
+        "/gallery",
         "/events",
         "/events/stream",
         "/memory/status",
@@ -169,6 +171,7 @@ def _is_allowed_agent_proxy_path(method: str, path: str) -> bool:
         return True
     if method == "POST" and path in {
         "/plans",
+        "/templates/import",
         "/memory/recall",
         "/memory/ingest",
         "/runtime/governance",
@@ -195,6 +198,13 @@ def _is_allowed_agent_proxy_path(method: str, path: str) -> bool:
         return suffix.endswith(
             ("/approve", "/approve_async", "/retry_failed", "/retry_failed_async", "/reject", "/undo")
         )
+    if path.startswith("/templates/"):
+        suffix = path.removeprefix("/templates/").strip("/")
+        if not suffix:
+            return False
+        if method == "GET":
+            return "/" not in suffix
+        return suffix.endswith("/launch")
     if path.startswith("/terminal/sessions/"):
         suffix = path.removeprefix("/terminal/sessions/").strip("/")
         if not suffix:
