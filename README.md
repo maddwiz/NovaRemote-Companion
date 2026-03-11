@@ -51,6 +51,8 @@ Security model:
 
 You can keep Codex Remote as the single origin your phone talks to while running NovaAdapt and NovaSpine as separate services on the same machine.
 
+For a concrete operator setup, use [NOVAADAPT_SIDECAR_RUNBOOK.md](./NOVAADAPT_SIDECAR_RUNBOOK.md).
+
 Set these environment variables in `~/.codexremote/config.env`:
 
 ```bash
