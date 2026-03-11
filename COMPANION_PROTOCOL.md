@@ -147,6 +147,21 @@ The companion server proxies only an allowlisted subset of NovaAdapt routes.
 - `POST /agents/terminal/sessions/{id}/input`
 - `POST /agents/terminal/sessions/{id}/close`
 
+## Explicitly Not Proxied
+
+These NovaAdapt route families are intentionally blocked at the companion layer
+until they have a reviewed mobile contract, tests, and rollout plan:
+
+- `/agents/browser/*`
+- `/agents/voice/*`
+- `/agents/canvas/*`
+- `/agents/mobile/*`
+- `/agents/execute/*`
+- `/agents/adapt/*`
+
+This keeps the companion boundary narrow even when NovaAdapt grows new
+capabilities on parallel branches.
+
 ## Companion Responsibilities
 
 Codex Remote owns:

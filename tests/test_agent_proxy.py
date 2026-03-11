@@ -52,6 +52,26 @@ class AgentProxyHelpersTest(unittest.TestCase):
         self.assertFalse(_is_allowed_agent_proxy_path("POST", "/jobs/job-1"))
         self.assertFalse(_is_allowed_agent_proxy_path("POST", "/terminal/sessions/term-1/output"))
 
+    def test_rejects_unapproved_control_route_families(self) -> None:
+        denied_routes = [
+            ("GET", "/mobile/status"),
+            ("POST", "/mobile/action"),
+            ("POST", "/execute/vision"),
+            ("GET", "/browser/status"),
+            ("POST", "/browser/action"),
+            ("GET", "/voice/status"),
+            ("POST", "/voice/transcribe"),
+            ("POST", "/voice/synthesize"),
+            ("GET", "/canvas/status"),
+            ("POST", "/canvas/render"),
+            ("GET", "/adapt/toggle"),
+            ("POST", "/adapt/toggle"),
+            ("GET", "/adapt/persona"),
+        ]
+        for method, path in denied_routes:
+            with self.subTest(method=method, path=path):
+                self.assertFalse(_is_allowed_agent_proxy_path(method, path))
+
 
 class AgentCapabilitiesRouteTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:

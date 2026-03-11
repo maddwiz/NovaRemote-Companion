@@ -160,6 +160,9 @@ def _normalize_agent_proxy_path(subpath: str) -> str:
 
 
 def _is_allowed_agent_proxy_path(method: str, path: str) -> bool:
+    # The companion is intentionally deny-by-default here. New NovaAdapt route
+    # families must be added explicitly with matching tests and docs so sidecar
+    # upgrades cannot silently widen the mobile-facing control surface.
     if method == "GET" and path in {
         "/health",
         "/jobs",
