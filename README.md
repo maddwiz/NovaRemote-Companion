@@ -88,6 +88,8 @@ With that configured:
   - `/agents/memory/status`
   - `/agents/memory/recall`
   - `/agents/memory/ingest`
+  - `/agents/runtime/governance`
+  - `/agents/runtime/jobs/cancel_all`
   - `/agents/terminal/sessions`
   - `/agents/terminal/sessions/{id}`
   - `/agents/terminal/sessions/{id}/output`
