@@ -157,6 +157,8 @@ def _is_allowed_agent_proxy_path(method: str, path: str) -> bool:
         "/health",
         "/jobs",
         "/plans",
+        "/events",
+        "/events/stream",
         "/memory/status",
         "/terminal/sessions",
         "/workflows/status",

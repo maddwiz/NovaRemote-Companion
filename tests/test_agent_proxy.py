@@ -19,6 +19,8 @@ class AgentProxyHelpersTest(unittest.TestCase):
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/jobs/job-1/stream"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/plans/plan-1"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/plans/plan-1/stream"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/events"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/events/stream"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/memory/status"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/workflows/status"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/workflows/list"))
