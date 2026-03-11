@@ -54,6 +54,10 @@ You can keep Codex Remote as the single origin your phone talks to while running
 
 For a concrete operator setup, use [NOVAADAPT_SIDECAR_RUNBOOK.md](./NOVAADAPT_SIDECAR_RUNBOOK.md) together with:
 
+Also see:
+- [COMPANION_PROTOCOL.md](./COMPANION_PROTOCOL.md) for the app-facing contract
+- [OPEN_SOURCE_CHECKLIST.md](./OPEN_SOURCE_CHECKLIST.md) for the publication checklist
+
 - [docker-compose.nova-sidecars.yml](./docker-compose.nova-sidecars.yml)
 - [.env.nova-sidecars.example](./.env.nova-sidecars.example)
 - [scripts/validate_nova_sidecars.py](./scripts/validate_nova_sidecars.py)
