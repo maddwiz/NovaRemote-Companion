@@ -47,6 +47,11 @@ SPECTATE_TTL_MIN_SECONDS = 60
 SPECTATE_TTL_MAX_SECONDS = 86400
 SPECTATE_DEFAULT_TTL_SECONDS = 900
 AGENT_PROXY_TIMEOUT_DEFAULT_SECONDS = 15.0
+AGENT_CAPABILITIES_CACHE_TTL_SECONDS = 30.0
+AGENT_CAPABILITIES_CACHE: dict[str, Any] = {
+    "expires_at_ts": 0.0,
+    "payload": None,
+}
 
 app = FastAPI(
     title="Codex Remote",
@@ -334,6 +339,77 @@ async def _probe_optional_service(
 def _ensure_novaadapt_enabled() -> None:
     if not SETTINGS.novaadapt_enabled or not SETTINGS.novaadapt_bridge_url:
         raise HTTPException(status_code=503, detail="NovaAdapt bridge is not configured.")
+
+
+def _optional_route_supported(result: dict[str, Any]) -> bool:
+    if not result.get("configured"):
+        return False
+    status_code = result.get("status_code")
+    return status_code != 404
+
+
+async def _compute_novaadapt_capabilities() -> dict[str, bool]:
+    memory_status, governance, workflows, templates, template_gallery = await asyncio.gather(
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/memory/status",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/runtime/governance",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/workflows/list",
+            query=[("limit", "1"), ("context", "api")],
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/templates",
+            query=[("limit", "1")],
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/gallery",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+    )
+    return {
+        "memoryStatus": _optional_route_supported(memory_status),
+        "governance": _optional_route_supported(governance),
+        "workflows": _optional_route_supported(workflows),
+        "templates": _optional_route_supported(templates),
+        "templateGallery": _optional_route_supported(template_gallery),
+    }
+
+
+async def _novaadapt_capabilities_payload(*, force: bool = False) -> dict[str, Any]:
+    _ensure_novaadapt_enabled()
+    now_ts = time.time()
+    cached_payload = AGENT_CAPABILITIES_CACHE.get("payload")
+    expires_at_ts = float(AGENT_CAPABILITIES_CACHE.get("expires_at_ts", 0.0))
+    if not force and isinstance(cached_payload, dict) and expires_at_ts > now_ts:
+        return {**cached_payload, "cached": True}
+
+    capabilities = await _compute_novaadapt_capabilities()
+    payload = {
+        "ok": True,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "cached": False,
+        "capabilities": capabilities,
+    }
+    AGENT_CAPABILITIES_CACHE["payload"] = payload
+    AGENT_CAPABILITIES_CACHE["expires_at_ts"] = now_ts + AGENT_CAPABILITIES_CACHE_TTL_SECONDS
+    return payload
 
 
 def _prune_spectate_tokens(now_ts: float | None = None) -> None:
@@ -995,6 +1071,13 @@ async def files_tail(path: str = Query(...), lines: int = Query(200, ge=1, le=50
     content = tail_text_file(resolved, lines, SETTINGS.max_read_bytes)
     AUDIT.write("files_tail", path=str(resolved), lines=lines)
     return {"path": str(resolved), "lines": lines, "content": content}
+
+
+@app.get("/agents/capabilities")
+async def novaadapt_capabilities(force: bool = Query(False)) -> dict[str, Any]:
+    payload = await _novaadapt_capabilities_payload(force=force)
+    AUDIT.write("novaadapt_capabilities", force=force, cached=bool(payload.get("cached")))
+    return payload
 
 
 @app.api_route("/agents/{subpath:path}", methods=["GET", "POST"])

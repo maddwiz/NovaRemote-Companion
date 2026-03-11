@@ -45,6 +45,7 @@ Security model:
 - `GET /files/list`
 - `GET /files/read`
 - `GET /files/tail`
+- `GET /agents/capabilities`
 - `GET|POST /agents/*` (authenticated NovaAdapt sidecar passthrough; allowlisted routes only)
 
 ## Optional NovaAdapt + NovaSpine Sidecars
@@ -72,6 +73,7 @@ export CODEXREMOTE_NOVASPINE_TOKEN="replace-with-spine-token"
 
 With that configured:
 - `GET /health` includes `novaadapt` and `novaspine` status blocks
+- `GET /agents/capabilities` returns cached support flags for optional NovaAdapt route families (`memory`, `governance`, `workflows`, `templates`, `gallery`)
 - `GET|POST /agents/*` proxies a safe allowlist of NovaAdapt bridge routes:
   - `/agents/health`
   - `/agents/jobs`

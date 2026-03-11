@@ -1,8 +1,10 @@
 import os
 import unittest
+from unittest.mock import AsyncMock, patch
 
 os.environ.setdefault("CODEXREMOTE_TOKEN", "test-token")
 
+from app import server
 from app.server import _is_allowed_agent_proxy_path, _normalize_agent_proxy_path
 
 
@@ -49,6 +51,61 @@ class AgentProxyHelpersTest(unittest.TestCase):
         self.assertFalse(_is_allowed_agent_proxy_path("GET", "/templates/template-1/launch"))
         self.assertFalse(_is_allowed_agent_proxy_path("POST", "/jobs/job-1"))
         self.assertFalse(_is_allowed_agent_proxy_path("POST", "/terminal/sessions/term-1/output"))
+
+
+class AgentCapabilitiesRouteTest(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        server.AGENT_CAPABILITIES_CACHE["payload"] = None
+        server.AGENT_CAPABILITIES_CACHE["expires_at_ts"] = 0.0
+        self.ensure_enabled = patch.object(server, "_ensure_novaadapt_enabled", return_value=None)
+        self.ensure_enabled.start()
+
+    async def asyncTearDown(self) -> None:
+        self.ensure_enabled.stop()
+
+    async def test_capabilities_route_caches_optional_route_support(self) -> None:
+        with patch.object(
+            server,
+            "_probe_optional_service",
+            new=AsyncMock(
+                side_effect=[
+                    {"configured": True, "ok": True},
+                    {"configured": True, "status_code": 503, "detail": "upstream unavailable"},
+                    {"configured": True, "status_code": 404, "detail": "missing"},
+                    {"configured": True, "ok": True},
+                    {"configured": True, "status_code": 404, "detail": "missing"},
+                ]
+            ),
+        ) as probe_mock:
+            first = await server.novaadapt_capabilities(force=False)
+            second = await server.novaadapt_capabilities(force=False)
+
+        self.assertEqual(probe_mock.await_count, 5)
+        self.assertFalse(first["cached"])
+        self.assertTrue(second["cached"])
+        self.assertEqual(
+            first["capabilities"],
+            {
+                "memoryStatus": True,
+                "governance": True,
+                "workflows": False,
+                "templates": True,
+                "templateGallery": False,
+            },
+        )
+
+    async def test_force_refresh_bypasses_cached_capabilities(self) -> None:
+        with patch.object(
+            server,
+            "_probe_optional_service",
+            new=AsyncMock(side_effect=[{"configured": True, "ok": True}] * 10),
+        ) as probe_mock:
+            first = await server.novaadapt_capabilities(force=False)
+            second = await server.novaadapt_capabilities(force=True)
+
+        self.assertFalse(first["cached"])
+        self.assertFalse(second["cached"])
+        self.assertEqual(probe_mock.await_count, 10)
 
 
 if __name__ == "__main__":
