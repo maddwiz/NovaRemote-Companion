@@ -16,7 +16,9 @@ class AgentProxyHelpersTest(unittest.TestCase):
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/health"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/jobs"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/jobs/job-1"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/jobs/job-1/stream"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/plans/plan-1"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/plans/plan-1/stream"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/memory/status"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/workflows/status"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/workflows/list"))
@@ -34,7 +36,6 @@ class AgentProxyHelpersTest(unittest.TestCase):
 
     def test_rejects_unsupported_routes(self) -> None:
         self.assertFalse(_is_allowed_agent_proxy_path("GET", "/ws"))
-        self.assertFalse(_is_allowed_agent_proxy_path("GET", "/plans/plan-1/stream"))
         self.assertFalse(_is_allowed_agent_proxy_path("POST", "/jobs/job-1"))
         self.assertFalse(_is_allowed_agent_proxy_path("POST", "/terminal/sessions/term-1/output"))
 

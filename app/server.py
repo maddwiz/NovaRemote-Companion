@@ -16,7 +16,7 @@ from urllib.request import Request as UrlRequest, urlopen
 import uuid
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .audit import AuditLog
@@ -178,13 +178,15 @@ def _is_allowed_agent_proxy_path(method: str, path: str) -> bool:
         suffix = path.removeprefix("/jobs/").strip("/")
         if not suffix:
             return False
-        return (method == "GET" and "/" not in suffix) or (method == "POST" and suffix.endswith("/cancel"))
+        return (method == "GET" and ("/" not in suffix or suffix.endswith("/stream"))) or (
+            method == "POST" and suffix.endswith("/cancel")
+        )
     if path.startswith("/plans/"):
         suffix = path.removeprefix("/plans/").strip("/")
         if not suffix:
             return False
         if method == "GET":
-            return "/" not in suffix
+            return "/" not in suffix or suffix.endswith("/stream")
         return suffix.endswith(
             ("/approve", "/approve_async", "/retry_failed", "/retry_failed_async", "/reject", "/undo")
         )
@@ -246,6 +248,48 @@ def _proxy_json_request(
         raise HTTPException(status_code=exc.code, detail=detail or exc.reason) from exc
     except URLError as exc:
         raise HTTPException(status_code=503, detail=f"Upstream unavailable: {exc.reason}") from exc
+
+
+def _proxy_sse_stream(
+    base_url: str,
+    path: str,
+    *,
+    token: str | None,
+    query: list[tuple[str, str]] | None = None,
+    timeout: float = AGENT_PROXY_TIMEOUT_DEFAULT_SECONDS,
+):
+    url = f"{base_url}{path}"
+    if query:
+        url = f"{url}?{urlencode(query, doseq=True)}"
+    headers = {
+        "Accept": "text/event-stream",
+        "Cache-Control": "no-cache",
+        **_auth_headers(token),
+    }
+    request = UrlRequest(url, headers=headers, method="GET")
+
+    try:
+        response = urlopen(request, timeout=timeout)
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace").strip()
+        raise HTTPException(status_code=exc.code, detail=detail or exc.reason) from exc
+    except URLError as exc:
+        raise HTTPException(status_code=503, detail=f"Upstream unavailable: {exc.reason}") from exc
+
+    def iterator():
+        try:
+            while True:
+                chunk = response.readline()
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            try:
+                response.close()
+            except Exception:
+                pass
+
+    return iterator()
 
 
 async def _probe_optional_service(
@@ -957,6 +1001,31 @@ async def novaadapt_proxy(subpath: str, request: Request) -> Any:
                 payload = json.loads(raw_body.decode("utf-8"))
             except json.JSONDecodeError as exc:
                 raise HTTPException(status_code=400, detail="NovaAdapt proxy expects JSON payloads.") from exc
+
+    if request.method == "GET" and upstream_path.endswith("/stream"):
+        stream = await asyncio.to_thread(
+            _proxy_sse_stream,
+            SETTINGS.novaadapt_bridge_url or "",
+            upstream_path,
+            token=SETTINGS.novaadapt_bridge_token,
+            query=query,
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        )
+        AUDIT.write(
+            "novaadapt_proxy",
+            method=request.method,
+            path=upstream_path,
+            query=dict(query),
+            stream=True,
+        )
+        return StreamingResponse(
+            stream,
+            media_type="text/event-stream; charset=utf-8",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            },
+        )
 
     response = await asyncio.to_thread(
         _proxy_json_request,
