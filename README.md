@@ -98,6 +98,12 @@ Validate the sidecar package before running Docker:
 python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars
 ```
 
+Validate the running host + sidecars end-to-end:
+
+```bash
+python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars --live-check
+```
+
 This keeps the agent runtime and memory service decoupled from Codex Remote while giving the mobile app one server origin.
 
 ## Install (macOS)

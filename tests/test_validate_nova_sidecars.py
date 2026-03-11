@@ -8,10 +8,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from scripts.validate_nova_sidecars import (  # noqa: E402
-    ValidationIssue,
+    parse_export_env_file,
     parse_env_file,
     validate_compose_text,
     validate_env_values,
+    validate_live_runtime,
 )
 
 
@@ -76,6 +77,21 @@ class ValidateNovaSidecarsTest(unittest.TestCase):
             }
             issues = validate_env_values(repo_root, values)
             self.assertEqual([], [issue for issue in issues if issue.level == "ERROR"])
+
+    def test_parse_export_env_file_reads_shell_exports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.env"
+            config_path.write_text(
+                'export CODEXREMOTE_TOKEN="abc"\nexport CODEXREMOTE_BIND_PORT="8787"\n',
+                encoding="utf-8",
+            )
+            values = parse_export_env_file(config_path)
+            self.assertEqual(values["CODEXREMOTE_TOKEN"], "abc")
+            self.assertEqual(values["CODEXREMOTE_BIND_PORT"], "8787")
+
+    def test_validate_live_runtime_requires_token(self) -> None:
+        issues = validate_live_runtime({})
+        self.assertTrue(any(issue.level == "ERROR" for issue in issues))
 
 
 if __name__ == "__main__":

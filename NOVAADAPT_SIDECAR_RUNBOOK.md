@@ -54,6 +54,12 @@ Validate the package first:
 python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars
 ```
 
+If the sidecars are already running and Codex Remote is pointed at them, validate the live stack too:
+
+```bash
+python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars --live-check
+```
+
 Then start the sidecars:
 
 ```bash
