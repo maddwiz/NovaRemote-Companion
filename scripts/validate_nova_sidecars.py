@@ -289,8 +289,17 @@ def main(argv: list[str] | None = None) -> int:
     env_file = None if args.compose_only else args.env_file.expanduser()
     if env_file is not None and not env_file.is_absolute():
         env_file = (repo_root / env_file).resolve()
+    issues: list[ValidationIssue] = []
+    if env_file is not None and not env_file.exists() and args.live_check:
+        issues.append(
+            ValidationIssue(
+                "WARNING",
+                f"env file does not exist: {env_file}; skipping package env checks and continuing with live validation",
+            )
+        )
+        env_file = None
 
-    issues = validate_sidecars(repo_root, env_file)
+    issues.extend(validate_sidecars(repo_root, env_file))
     if args.live_check:
         config_file = args.config_file.expanduser().resolve()
         if not config_file.exists():

@@ -2,10 +2,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+import scripts.validate_nova_sidecars as validate_module  # noqa: E402
 
 from scripts.validate_nova_sidecars import (  # noqa: E402
     parse_export_env_file,
@@ -92,6 +95,34 @@ class ValidateNovaSidecarsTest(unittest.TestCase):
     def test_validate_live_runtime_requires_token(self) -> None:
         issues = validate_live_runtime({})
         self.assertTrue(any(issue.level == "ERROR" for issue in issues))
+
+    def test_main_allows_missing_env_file_during_live_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            (repo_root / "docker-compose.nova-sidecars.yml").write_text(
+                (ROOT / "docker-compose.nova-sidecars.yml").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            config_path = repo_root / "config.env"
+            config_path.write_text(
+                'export CODEXREMOTE_TOKEN="abc"\n',
+                encoding="utf-8",
+            )
+
+            with patch.object(validate_module, "validate_live_runtime", return_value=[]):
+                result = validate_module.main(
+                    [
+                        "--repo-root",
+                        str(repo_root),
+                        "--env-file",
+                        ".env.nova-sidecars",
+                        "--live-check",
+                        "--config-file",
+                        str(config_path),
+                    ]
+                )
+
+            self.assertEqual(0, result)
 
 
 if __name__ == "__main__":

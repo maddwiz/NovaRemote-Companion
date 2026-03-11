@@ -108,6 +108,12 @@ Validate the running host + sidecars end-to-end:
 python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars --live-check
 ```
 
+If the sidecars are already running and you never created `.env.nova-sidecars`, you can still run:
+
+```bash
+python scripts/validate_nova_sidecars.py --live-check
+```
+
 Start or stop the sidecars with the packaged helpers:
 
 ```bash

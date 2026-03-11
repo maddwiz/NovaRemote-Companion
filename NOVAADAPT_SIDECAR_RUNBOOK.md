@@ -60,6 +60,12 @@ If the sidecars are already running and Codex Remote is pointed at them, validat
 python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars --live-check
 ```
 
+If the stack is already running and you do not keep a checked-in `.env.nova-sidecars` file around on this machine, the validator can also fall back to compose-only package checks plus the live host/runtime probe:
+
+```bash
+python scripts/validate_nova_sidecars.py --live-check
+```
+
 Then start the sidecars:
 
 ```bash
