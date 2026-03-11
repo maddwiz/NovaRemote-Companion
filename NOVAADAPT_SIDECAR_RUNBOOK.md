@@ -69,6 +69,12 @@ docker compose \
   up -d --build
 ```
 
+Equivalent helper:
+
+```bash
+./scripts/start_nova_sidecars.sh
+```
+
 ## 3. Point Codex Remote at the sidecars
 
 Add these to `~/.codexremote/config.env`:
@@ -170,6 +176,12 @@ docker compose \
   --env-file .env.nova-sidecars \
   -f docker-compose.nova-sidecars.yml \
   down
+```
+
+Equivalent helper:
+
+```bash
+./scripts/stop_nova_sidecars.sh
 ```
 
 Phone behavior after rollback:

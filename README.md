@@ -56,6 +56,8 @@ For a concrete operator setup, use [NOVAADAPT_SIDECAR_RUNBOOK.md](./NOVAADAPT_SI
 - [docker-compose.nova-sidecars.yml](./docker-compose.nova-sidecars.yml)
 - [.env.nova-sidecars.example](./.env.nova-sidecars.example)
 - [scripts/validate_nova_sidecars.py](./scripts/validate_nova_sidecars.py)
+- [scripts/start_nova_sidecars.sh](./scripts/start_nova_sidecars.sh)
+- [scripts/stop_nova_sidecars.sh](./scripts/stop_nova_sidecars.sh)
 
 Set these environment variables in `~/.codexremote/config.env`:
 
@@ -102,6 +104,13 @@ Validate the running host + sidecars end-to-end:
 
 ```bash
 python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars --live-check
+```
+
+Start or stop the sidecars with the packaged helpers:
+
+```bash
+./scripts/start_nova_sidecars.sh
+./scripts/stop_nova_sidecars.sh
 ```
 
 This keeps the agent runtime and memory service decoupled from Codex Remote while giving the mobile app one server origin.
