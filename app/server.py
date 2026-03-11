@@ -153,9 +153,26 @@ def _normalize_agent_proxy_path(subpath: str) -> str:
 
 
 def _is_allowed_agent_proxy_path(method: str, path: str) -> bool:
-    if method == "GET" and path in {"/health", "/jobs", "/plans", "/memory/status", "/terminal/sessions"}:
+    if method == "GET" and path in {
+        "/health",
+        "/jobs",
+        "/plans",
+        "/memory/status",
+        "/terminal/sessions",
+        "/workflows/status",
+        "/workflows/list",
+        "/workflows/item",
+    }:
         return True
-    if method == "POST" and path in {"/plans", "/memory/recall", "/memory/ingest", "/terminal/sessions"}:
+    if method == "POST" and path in {
+        "/plans",
+        "/memory/recall",
+        "/memory/ingest",
+        "/terminal/sessions",
+        "/workflows/start",
+        "/workflows/advance",
+        "/workflows/resume",
+    }:
         return True
     if path.startswith("/jobs/"):
         suffix = path.removeprefix("/jobs/").strip("/")
