@@ -78,6 +78,7 @@ export CODEXREMOTE_NOVASPINE_TOKEN="replace-with-spine-token"
 With that configured:
 - `GET /health` includes `novaadapt` and `novaspine` status blocks
 - `GET /agents/capabilities` returns cached support flags for optional NovaAdapt route families (`memory`, `governance`, `workflows`, `templates`, `gallery`)
+- both `/health` and `/agents/capabilities` now include `protocol_version` and `agent_contract_version` for compatibility checks
 - `GET|POST /agents/*` proxies a safe allowlist of NovaAdapt bridge routes:
   - `/agents/health`
   - `/agents/jobs`

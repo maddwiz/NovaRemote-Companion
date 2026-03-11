@@ -52,6 +52,8 @@ AGENT_CAPABILITIES_CACHE: dict[str, Any] = {
     "expires_at_ts": 0.0,
     "payload": None,
 }
+COMPANION_PROTOCOL_VERSION = "2026-03-11.1"
+AGENT_CONTRACT_VERSION = "2026-03-11.1"
 
 app = FastAPI(
     title="Codex Remote",
@@ -403,6 +405,8 @@ async def _novaadapt_capabilities_payload(*, force: bool = False) -> dict[str, A
     capabilities = await _compute_novaadapt_capabilities()
     payload = {
         "ok": True,
+        "protocol_version": COMPANION_PROTOCOL_VERSION,
+        "agent_contract_version": AGENT_CONTRACT_VERSION,
         "checked_at": datetime.now(timezone.utc).isoformat(),
         "cached": False,
         "capabilities": capabilities,
@@ -586,6 +590,8 @@ async def health() -> dict[str, Any]:
     )
     return {
         "ok": True,
+        "protocol_version": COMPANION_PROTOCOL_VERSION,
+        "agent_contract_version": AGENT_CONTRACT_VERSION,
         "started_at": STARTED_AT.isoformat(),
         "tmux": {
             "binary": SETTINGS.tmux_bin,

@@ -229,6 +229,10 @@ def validate_live_runtime(config_values: dict[str, str]) -> list[ValidationIssue
             capabilities_payload = _read_json(f"{base_url}/agents/capabilities", auth_headers)
             if not capabilities_payload.get("ok"):
                 issues.append(ValidationIssue("ERROR", "Codex Remote /agents/capabilities did not return ok=true"))
+            if not str(capabilities_payload.get("protocol_version") or "").strip():
+                issues.append(ValidationIssue("ERROR", "Codex Remote /agents/capabilities did not return protocol_version"))
+            if not str(capabilities_payload.get("agent_contract_version") or "").strip():
+                issues.append(ValidationIssue("ERROR", "Codex Remote /agents/capabilities did not return agent_contract_version"))
             capabilities = capabilities_payload.get("capabilities")
             if not isinstance(capabilities, dict):
                 issues.append(ValidationIssue("ERROR", "Codex Remote /agents/capabilities did not return a capabilities object"))

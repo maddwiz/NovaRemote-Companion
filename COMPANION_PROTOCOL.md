@@ -35,6 +35,8 @@ Returns the top-level companion health plus sidecar summaries when configured.
 
 Required top-level fields:
 - `ok`
+- `protocol_version`
+- `agent_contract_version`
 - `features`
 - `novaadapt`
 - `novaspine`
@@ -71,6 +73,8 @@ Companion-owned cached capability summary for optional NovaAdapt route families.
 
 Expected fields:
 - `ok`
+- `protocol_version`
+- `agent_contract_version`
 - `checked_at`
 - `cached`
 - `capabilities`

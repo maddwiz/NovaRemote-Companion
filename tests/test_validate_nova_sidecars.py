@@ -116,6 +116,8 @@ class ValidateNovaSidecarsTest(unittest.TestCase):
             if url.endswith("/agents/capabilities"):
                 return {
                     "ok": True,
+                    "protocol_version": "2026-03-11.1",
+                    "agent_contract_version": "2026-03-11.1",
                     "capabilities": {
                         "memoryStatus": False,
                         "governance": True,
@@ -151,6 +153,8 @@ class ValidateNovaSidecarsTest(unittest.TestCase):
             if url.endswith("/agents/capabilities"):
                 return {
                     "ok": True,
+                    "protocol_version": "2026-03-11.1",
+                    "agent_contract_version": "2026-03-11.1",
                     "capabilities": {
                         "memoryStatus": False,
                         "governance": True,

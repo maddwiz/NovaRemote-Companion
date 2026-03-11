@@ -83,6 +83,8 @@ class AgentCapabilitiesRouteTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(probe_mock.await_count, 5)
         self.assertFalse(first["cached"])
         self.assertTrue(second["cached"])
+        self.assertEqual(first["protocol_version"], server.COMPANION_PROTOCOL_VERSION)
+        self.assertEqual(first["agent_contract_version"], server.AGENT_CONTRACT_VERSION)
         self.assertEqual(
             first["capabilities"],
             {
