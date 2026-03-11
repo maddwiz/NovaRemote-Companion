@@ -152,6 +152,7 @@ curl -s http://127.0.0.1:8787/agents/workflows/start \
 If those work, NovaRemote can use the server runtime without talking to NovaAdapt directly.
 
 `/agents/capabilities` is a Codex Remote convenience endpoint. It caches optional NovaAdapt route-family support so the mobile app can avoid probing unsupported routes on every refresh.
+The live sidecar validator now checks that this endpoint is reachable and returns the expected capability keys before considering the stack healthy.
 
 ## Operational notes
 

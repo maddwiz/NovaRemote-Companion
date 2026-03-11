@@ -225,6 +225,31 @@ def validate_live_runtime(config_values: dict[str, str]) -> list[ValidationIssue
                 issues.append(ValidationIssue("ERROR", "Codex Remote /agents/health did not return ok=true"))
         except (OSError, error.URLError, error.HTTPError, json.JSONDecodeError) as exc:
             issues.append(ValidationIssue("ERROR", f"failed to query /agents/health: {exc}"))
+        try:
+            capabilities_payload = _read_json(f"{base_url}/agents/capabilities", auth_headers)
+            if not capabilities_payload.get("ok"):
+                issues.append(ValidationIssue("ERROR", "Codex Remote /agents/capabilities did not return ok=true"))
+            capabilities = capabilities_payload.get("capabilities")
+            if not isinstance(capabilities, dict):
+                issues.append(ValidationIssue("ERROR", "Codex Remote /agents/capabilities did not return a capabilities object"))
+            else:
+                required_capability_keys = (
+                    "memoryStatus",
+                    "governance",
+                    "workflows",
+                    "templates",
+                    "templateGallery",
+                )
+                missing_keys = [key for key in required_capability_keys if key not in capabilities]
+                if missing_keys:
+                    issues.append(
+                        ValidationIssue(
+                            "ERROR",
+                            f"Codex Remote /agents/capabilities is missing keys: {', '.join(missing_keys)}",
+                        )
+                    )
+        except (OSError, error.URLError, error.HTTPError, json.JSONDecodeError) as exc:
+            issues.append(ValidationIssue("ERROR", f"failed to query /agents/capabilities: {exc}"))
 
     novaspine_url = config_values.get("CODEXREMOTE_NOVASPINE_URL", "").strip()
     novaspine_token = config_values.get("CODEXREMOTE_NOVASPINE_TOKEN", "").strip()

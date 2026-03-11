@@ -96,6 +96,80 @@ class ValidateNovaSidecarsTest(unittest.TestCase):
         issues = validate_live_runtime({})
         self.assertTrue(any(issue.level == "ERROR" for issue in issues))
 
+    def test_validate_live_runtime_checks_agent_capabilities_contract(self) -> None:
+        config = {
+            "CODEXREMOTE_TOKEN": "token",
+            "CODEXREMOTE_BIND_HOST": "127.0.0.1",
+            "CODEXREMOTE_BIND_PORT": "8787",
+            "CODEXREMOTE_NOVAADAPT_ENABLED": "true",
+        }
+
+        def fake_read_json(url: str, headers: dict[str, str] | None = None) -> dict:
+            if url.endswith("/health"):
+                return {
+                    "ok": True,
+                    "features": {"agents": True},
+                    "novaadapt": {"ok": True},
+                }
+            if url.endswith("/agents/health"):
+                return {"ok": True}
+            if url.endswith("/agents/capabilities"):
+                return {
+                    "ok": True,
+                    "capabilities": {
+                        "memoryStatus": False,
+                        "governance": True,
+                        "workflows": True,
+                        "templates": False,
+                        "templateGallery": False,
+                    },
+                }
+            raise AssertionError(f"unexpected url: {url}")
+
+        with patch.object(validate_module, "_read_json", side_effect=fake_read_json):
+            issues = validate_live_runtime(config)
+
+        self.assertEqual([], [issue for issue in issues if issue.level == "ERROR"])
+
+    def test_validate_live_runtime_flags_missing_capability_keys(self) -> None:
+        config = {
+            "CODEXREMOTE_TOKEN": "token",
+            "CODEXREMOTE_BIND_HOST": "127.0.0.1",
+            "CODEXREMOTE_BIND_PORT": "8787",
+            "CODEXREMOTE_NOVAADAPT_ENABLED": "true",
+        }
+
+        def fake_read_json(url: str, headers: dict[str, str] | None = None) -> dict:
+            if url.endswith("/health"):
+                return {
+                    "ok": True,
+                    "features": {"agents": True},
+                    "novaadapt": {"ok": True},
+                }
+            if url.endswith("/agents/health"):
+                return {"ok": True}
+            if url.endswith("/agents/capabilities"):
+                return {
+                    "ok": True,
+                    "capabilities": {
+                        "memoryStatus": False,
+                        "governance": True,
+                    },
+                }
+            raise AssertionError(f"unexpected url: {url}")
+
+        with patch.object(validate_module, "_read_json", side_effect=fake_read_json):
+            issues = validate_live_runtime(config)
+
+        self.assertTrue(
+            any(
+                issue.level == "ERROR"
+                and "missing keys" in issue.message
+                and "workflows" in issue.message
+                for issue in issues
+            )
+        )
+
     def test_main_allows_missing_env_file_during_live_check(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
