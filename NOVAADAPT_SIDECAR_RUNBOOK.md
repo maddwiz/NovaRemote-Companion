@@ -48,6 +48,14 @@ Edit at minimum:
 
 ## 2. Start sidecars
 
+Validate the package first:
+
+```bash
+python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars
+```
+
+Then start the sidecars:
+
 ```bash
 docker compose \
   --env-file .env.nova-sidecars \
