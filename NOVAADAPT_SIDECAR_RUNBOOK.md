@@ -1,155 +1,153 @@
 # NovaAdapt + NovaSpine Sidecar Runbook
 
-Updated: 2026-03-10
+This runbook keeps Codex Remote as the only mobile-facing origin while NovaAdapt and NovaSpine run beside it.
 
-## Goal
-
-Run `codex_remote` as the single mobile-facing origin while NovaAdapt and NovaSpine run as separate local sidecars on the same machine.
-
-This keeps:
-
-- terminal/file/process transport in `codex_remote`
-- long-running agent execution in `NovaAdapt`
-- memory in `NovaSpine`
-
-## Topology
+Target topology:
 
 ```text
 NovaRemote app
-  -> codex_remote (http://127.0.0.1:8787)
-      -> NovaAdapt bridge/core sidecar (http://127.0.0.1:9797)
-      -> NovaSpine memory service (http://127.0.0.1:8420)
+  -> Codex Remote (host process, :8787)
+      -> NovaAdapt bridge sidecar (:9797)
+          -> NovaAdapt core sidecar (:8788 mapped, :8787 in-container)
+              -> NovaSpine sidecar (:8420)
 ```
+
+## Why this shape
+
+- Codex Remote stays the single endpoint the phone already trusts.
+- NovaAdapt stays independently upgradeable.
+- NovaSpine stays optional and can be disabled without taking down Codex Remote.
+- Rollback is a sidecar shutdown, not a full companion-server rewrite.
 
 ## Prerequisites
 
-- local checkout of:
-  - `/Users/desmondpottle/Documents/New project/codex_remote`
-  - `/Users/desmondpottle/Documents/New project/NovaAdapt`
-  - `/Users/desmondpottle/Documents/New project/NovaSpine`
-- Python toolchain for `codex_remote` and `NovaAdapt`
-- whatever runtime NovaSpine requires in its own repo
+- macOS host already running Codex Remote via `./install_mac.sh`
+- Docker Desktop or compatible `docker compose`
+- sibling checkout at `../NovaAdapt`, or set `NOVAADAPT_REPO_PATH`
 
-## 1. Start NovaSpine
+## 1. Prepare sidecar env
 
-Use the NovaSpine repo’s normal startup path first.
-
-Target URL expected by NovaAdapt:
-
-```text
-http://127.0.0.1:8420
-```
-
-Expected API shape:
-
-- `GET /api/v1/health`
-- `POST /api/v1/memory/recall`
-- `POST /api/v1/memory/ingest`
-- `POST /api/v1/memory/augment`
-
-## 2. Start NovaAdapt locally
-
-From the NovaAdapt repo:
+From the Codex Remote repo:
 
 ```bash
-cd '/Users/desmondpottle/Documents/New project/NovaAdapt'
-export NOVAADAPT_MEMORY_BACKEND='novaspine-http'
-export NOVAADAPT_SPINE_URL='http://127.0.0.1:8420'
-export NOVAADAPT_SPINE_TOKEN='replace-with-spine-token-if-required'
-export NOVAADAPT_CORE_TOKEN='replace-with-core-token'
-export NOVAADAPT_BRIDGE_TOKEN='replace-with-bridge-token'
-./installer/run_local_operator_stack.sh
+cp .env.nova-sidecars.example .env.nova-sidecars
 ```
 
-Expected sidecar endpoints after startup:
+Edit at minimum:
 
-- core:
-  - `http://127.0.0.1:8787`
-- bridge:
-  - `http://127.0.0.1:9797`
+- `NOVAADAPT_CORE_TOKEN`
+- `NOVAADAPT_BRIDGE_TOKEN`
+- `NOVASPINE_TOKEN`
+- `NOVAADAPT_REPO_PATH` if your NovaAdapt checkout is not `../NovaAdapt`
+- `NOVAADAPT_OPENAI_API_KEY` / `NOVAADAPT_ANTHROPIC_API_KEY` only if you want those providers inside NovaAdapt
+- `NOVAADAPT_OLLAMA_HOST` if the host Ollama daemon is not available at `http://host.docker.internal:11434`
 
-If you want to avoid the core using `8787` because `codex_remote` will own that port, override ports before launch:
+## 2. Start sidecars
 
 ```bash
-export NOVAADAPT_CORE_PORT='8788'
-export NOVAADAPT_BRIDGE_PORT='9797'
-./installer/run_local_operator_stack.sh
+docker compose \
+  --env-file .env.nova-sidecars \
+  -f docker-compose.nova-sidecars.yml \
+  up -d --build
 ```
 
-When you change the bridge port, keep `codex_remote` pointed at the bridge URL, not the core URL.
+## 3. Point Codex Remote at the sidecars
 
-## 3. Configure codex_remote bridge passthrough
-
-Edit `~/.codexremote/config.env`:
+Add these to `~/.codexremote/config.env`:
 
 ```bash
-export CODEXREMOTE_NOVAADAPT_ENABLED='true'
-export CODEXREMOTE_NOVAADAPT_BRIDGE_URL='http://127.0.0.1:9797'
-export CODEXREMOTE_NOVAADAPT_BRIDGE_TOKEN='replace-with-bridge-token'
-export CODEXREMOTE_NOVAADAPT_TIMEOUT_SECONDS='15'
-export CODEXREMOTE_NOVASPINE_URL='http://127.0.0.1:8420'
-export CODEXREMOTE_NOVASPINE_TOKEN='replace-with-spine-token-if-required'
+export CODEXREMOTE_NOVAADAPT_ENABLED="true"
+export CODEXREMOTE_NOVAADAPT_BRIDGE_URL="http://127.0.0.1:9797"
+export CODEXREMOTE_NOVAADAPT_BRIDGE_TOKEN="replace-with-bridge-token"
+export CODEXREMOTE_NOVAADAPT_TIMEOUT_SECONDS="15"
+export CODEXREMOTE_NOVASPINE_URL="http://127.0.0.1:8420"
+export CODEXREMOTE_NOVASPINE_TOKEN="replace-with-spine-token"
 ```
 
-Then restart `codex_remote`.
-
-## 4. Verify health
-
-First verify `codex_remote`:
+Restart Codex Remote after editing:
 
 ```bash
-TOKEN='replace-with-codexremote-token'
-BASE='http://127.0.0.1:8787'
-
-curl -H "Authorization: Bearer $TOKEN" "$BASE/health?deep=1"
+launchctl kickstart -k gui/$(id -u)/com.desmond.codexremote
 ```
 
-You should see `novaadapt` and `novaspine` blocks in the response.
+## 4. Validate health
 
-Then verify the proxied agent routes:
+Codex Remote:
 
 ```bash
-curl -H "Authorization: Bearer $TOKEN" "$BASE/agents/health"
-curl -H "Authorization: Bearer $TOKEN" "$BASE/agents/plans?limit=5"
-curl -H "Authorization: Bearer $TOKEN" "$BASE/agents/jobs?limit=5"
-curl -H "Authorization: Bearer $TOKEN" "$BASE/agents/workflows/list?limit=5&context=api"
-curl -H "Authorization: Bearer $TOKEN" "$BASE/agents/memory/status"
+curl -s http://127.0.0.1:8787/health \
+  -H "Authorization: Bearer $CODEXREMOTE_TOKEN"
 ```
 
-## 5. Verify streaming
+Expected:
 
-The mobile app now expects streamed plan/job updates to work through `codex_remote`.
+- `novaadapt.enabled=true`
+- `novaadapt.reachable=true`
+- `novaspine.reachable=true` when configured
 
-Quick curl checks:
+Bridge direct:
 
 ```bash
-curl -N -H "Authorization: Bearer $TOKEN" "$BASE/agents/plans/<PLAN_ID>/stream?timeout=30&interval=0.25"
-curl -N -H "Authorization: Bearer $TOKEN" "$BASE/agents/jobs/<JOB_ID>/stream?timeout=30&interval=0.25"
+curl -s http://127.0.0.1:9797/health
 ```
 
-Expected content type:
+NovaSpine direct:
 
-```text
-text/event-stream
+```bash
+curl -s http://127.0.0.1:8420/api/v1/health \
+  -H "Authorization: Bearer $NOVASPINE_TOKEN"
 ```
 
-## Current mobile status
+## 5. Validate app-facing routes through Codex Remote
 
-With this sidecar setup, NovaRemote currently supports:
+```bash
+curl -s http://127.0.0.1:8787/agents/health \
+  -H "Authorization: Bearer $CODEXREMOTE_TOKEN"
 
-- runtime health and memory visibility
-- plan/job/workflow listing
-- live plan/job stream updates
-- plan actions:
-  - approve
-  - reject
-  - retry failed
-  - undo
-- dedicated `Agents` screen in the app
+curl -s http://127.0.0.1:8787/agents/plans \
+  -H "Authorization: Bearer $CODEXREMOTE_TOKEN"
 
-## Still pending
+curl -s http://127.0.0.1:8787/agents/workflows/list \
+  -H "Authorization: Bearer $CODEXREMOTE_TOKEN"
+```
 
-- fully moving agent CRUD/execution off the phone runtime
-- richer server event transport if needed beyond plan/job SSE
-- production packaging/deployment templates for this three-service layout
-- companion-server open-source cleanup and protocol hardening
+If those work, NovaRemote can use the server runtime without talking to NovaAdapt directly.
+
+## Operational notes
+
+- `novaspine` persists data in the named volume `novaspine-data`.
+- `novaadapt-core` currently uses `config/models.example.json`; replace that with your own model config strategy before production.
+- `NOVAADAPT_OLLAMA_HOST` defaults to `http://host.docker.internal:11434`, which is the simplest way to let NovaAdapt containers use a host Ollama daemon on macOS.
+- provider credentials use the `NOVAADAPT_*` prefixed env vars on purpose so the sidecars do not silently inherit unrelated host shell API keys.
+
+## Rollback
+
+1. Disable the bridge env in `~/.codexremote/config.env`:
+
+```bash
+export CODEXREMOTE_NOVAADAPT_ENABLED="false"
+unset CODEXREMOTE_NOVAADAPT_BRIDGE_URL
+unset CODEXREMOTE_NOVAADAPT_BRIDGE_TOKEN
+unset CODEXREMOTE_NOVASPINE_URL
+unset CODEXREMOTE_NOVASPINE_TOKEN
+```
+
+2. Restart Codex Remote:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/com.desmond.codexremote
+```
+
+3. Stop sidecars:
+
+```bash
+docker compose \
+  --env-file .env.nova-sidecars \
+  -f docker-compose.nova-sidecars.yml \
+  down
+```
+
+Phone behavior after rollback:
+
+- Codex Remote still works normally
+- NovaRemote falls back to the in-app NovaAdapt preview/runtime paths where supported
