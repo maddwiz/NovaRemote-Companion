@@ -24,6 +24,7 @@ NovaRemote app
 - macOS host already running Codex Remote via `./install_mac.sh`
 - Docker Desktop or compatible `docker compose`
 - sibling checkout at `../NovaAdapt`, or set `NOVAADAPT_REPO_PATH`
+- sibling checkout at `../NovaSpine`, or set `NOVASPINE_REPO_PATH`
 
 ## 1. Prepare sidecar env
 
@@ -39,8 +40,11 @@ Edit at minimum:
 - `NOVAADAPT_BRIDGE_TOKEN`
 - `NOVASPINE_TOKEN`
 - `NOVAADAPT_REPO_PATH` if your NovaAdapt checkout is not `../NovaAdapt`
+- `NOVASPINE_REPO_PATH` if your NovaSpine checkout is not `../NovaSpine`
 - `NOVAADAPT_OPENAI_API_KEY` / `NOVAADAPT_ANTHROPIC_API_KEY` only if you want those providers inside NovaAdapt
 - `NOVAADAPT_OLLAMA_HOST` if the host Ollama daemon is not available at `http://host.docker.internal:11434`
+- `NOVAADAPT_ENABLE_WORKFLOWS=1`
+- `NOVAADAPT_ENABLE_WORKFLOWS_API=1`
 
 ## 2. Start sidecars
 
@@ -109,15 +113,22 @@ curl -s http://127.0.0.1:8787/agents/plans \
 
 curl -s http://127.0.0.1:8787/agents/workflows/list \
   -H "Authorization: Bearer $CODEXREMOTE_TOKEN"
+
+curl -s http://127.0.0.1:8787/agents/workflows/start \
+  -H "Authorization: Bearer $CODEXREMOTE_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data '{"objective":"watch cluster","context":"api"}'
 ```
 
 If those work, NovaRemote can use the server runtime without talking to NovaAdapt directly.
 
 ## Operational notes
 
+- `novaspine` is installed from your checked-out `NovaSpine` repo. There is no public `pip install novaspine` wheel to rely on inside the sidecar.
 - `novaspine` persists data in the named volume `novaspine-data`.
 - `novaadapt-core` currently uses `config/models.example.json`; replace that with your own model config strategy before production.
 - `NOVAADAPT_OLLAMA_HOST` defaults to `http://host.docker.internal:11434`, which is the simplest way to let NovaAdapt containers use a host Ollama daemon on macOS.
+- workflow endpoints are disabled in NovaAdapt unless `NOVAADAPT_ENABLE_WORKFLOWS=1` or `NOVAADAPT_ENABLE_WORKFLOWS_API=1` is set for the core container.
 - provider credentials use the `NOVAADAPT_*` prefixed env vars on purpose so the sidecars do not silently inherit unrelated host shell API keys.
 
 ## Rollback

@@ -5,13 +5,17 @@ services:
     environment:
       C3AE_API_TOKEN: ${NOVASPINE_TOKEN}
       C3AE_DATA_DIR: /data
+      PYTHONUNBUFFERED: "1"
     command:
       - /bin/sh
       - -lc
       - >-
-        pip install --no-cache-dir novaspine &&
+        rm -rf /tmp/NovaSpine &&
+        cp -R /workspace/NovaSpine /tmp/NovaSpine &&
+        pip install --no-cache-dir /tmp/NovaSpine &&
         novaspine serve --host 0.0.0.0 --port 8420
     volumes:
+      - ${NOVASPINE_REPO_PATH:-../NovaSpine}:/workspace/NovaSpine:ro
       - novaspine-data:/data
     ports:
       - "8420:8420"
@@ -29,6 +33,8 @@ services:
       NOVAADAPT_MEMORY_BACKEND: ${NOVAADAPT_MEMORY_BACKEND:-novaspine-http}
       NOVAADAPT_SPINE_URL: ${NOVAADAPT_SPINE_URL:-http://novaspine:8420}
       NOVAADAPT_SPINE_TOKEN: ${NOVAADAPT_SPINE_TOKEN:-}
+      NOVAADAPT_ENABLE_WORKFLOWS: ${NOVAADAPT_ENABLE_WORKFLOWS:-1}
+      NOVAADAPT_ENABLE_WORKFLOWS_API: ${NOVAADAPT_ENABLE_WORKFLOWS_API:-1}
       OPENAI_API_KEY: ${NOVAADAPT_OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${NOVAADAPT_ANTHROPIC_API_KEY:-}
       OLLAMA_HOST: ${NOVAADAPT_OLLAMA_HOST:-http://host.docker.internal:11434}
