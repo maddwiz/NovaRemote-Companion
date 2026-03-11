@@ -23,6 +23,8 @@ Security model:
 - file list/read/tail
 - read-only live spectator links with browser viewer
 - dashboard web app
+- optional NovaAdapt bridge passthrough for agents, plans, jobs, and memory
+- optional NovaSpine health visibility for server-side memory deployments
 - macOS install script + launchd auto-start
 
 ## API
@@ -43,6 +45,48 @@ Security model:
 - `GET /files/list`
 - `GET /files/read`
 - `GET /files/tail`
+- `GET|POST /agents/*` (authenticated NovaAdapt sidecar passthrough; allowlisted routes only)
+
+## Optional NovaAdapt + NovaSpine Sidecars
+
+You can keep Codex Remote as the single origin your phone talks to while running NovaAdapt and NovaSpine as separate services on the same machine.
+
+Set these environment variables in `~/.codexremote/config.env`:
+
+```bash
+export CODEXREMOTE_NOVAADAPT_ENABLED="true"
+export CODEXREMOTE_NOVAADAPT_BRIDGE_URL="http://127.0.0.1:9797"
+export CODEXREMOTE_NOVAADAPT_BRIDGE_TOKEN="replace-with-bridge-token"
+export CODEXREMOTE_NOVAADAPT_TIMEOUT_SECONDS="15"
+export CODEXREMOTE_NOVASPINE_URL="http://127.0.0.1:8420"
+export CODEXREMOTE_NOVASPINE_TOKEN="replace-with-spine-token"
+```
+
+With that configured:
+- `GET /health` includes `novaadapt` and `novaspine` status blocks
+- `GET|POST /agents/*` proxies a safe allowlist of NovaAdapt bridge routes:
+  - `/agents/health`
+  - `/agents/jobs`
+  - `/agents/jobs/{id}`
+  - `/agents/jobs/{id}/cancel`
+  - `/agents/plans`
+  - `/agents/plans/{id}`
+  - `/agents/plans/{id}/approve`
+  - `/agents/plans/{id}/approve_async`
+  - `/agents/plans/{id}/retry_failed`
+  - `/agents/plans/{id}/retry_failed_async`
+  - `/agents/plans/{id}/reject`
+  - `/agents/plans/{id}/undo`
+  - `/agents/memory/status`
+  - `/agents/memory/recall`
+  - `/agents/memory/ingest`
+  - `/agents/terminal/sessions`
+  - `/agents/terminal/sessions/{id}`
+  - `/agents/terminal/sessions/{id}/output`
+  - `/agents/terminal/sessions/{id}/input`
+  - `/agents/terminal/sessions/{id}/close`
+
+This keeps the agent runtime and memory service decoupled from Codex Remote while giving the mobile app one server origin.
 
 ## Install (macOS)
 Run from project root:

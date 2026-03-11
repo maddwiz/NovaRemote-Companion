@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+import json
 from pathlib import Path
 import secrets
 import shlex
@@ -9,7 +10,9 @@ import shutil
 import subprocess
 import time
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote_plus, urlencode
+from urllib.request import Request as UrlRequest, urlopen
 import uuid
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
@@ -43,6 +46,7 @@ SPECTATE_TOKENS: dict[str, dict[str, Any]] = {}
 SPECTATE_TTL_MIN_SECONDS = 60
 SPECTATE_TTL_MAX_SECONDS = 86400
 SPECTATE_DEFAULT_TTL_SECONDS = 900
+AGENT_PROXY_TIMEOUT_DEFAULT_SECONDS = 15.0
 
 app = FastAPI(
     title="Codex Remote",
@@ -141,6 +145,119 @@ def _extract_ws_token(websocket: WebSocket) -> str | None:
 
 def _clamp_spectate_ttl(ttl_seconds: int) -> int:
     return max(SPECTATE_TTL_MIN_SECONDS, min(ttl_seconds, SPECTATE_TTL_MAX_SECONDS))
+
+
+def _normalize_agent_proxy_path(subpath: str) -> str:
+    normalized = "/" + subpath.strip().lstrip("/")
+    return "/health" if normalized == "/" else normalized
+
+
+def _is_allowed_agent_proxy_path(method: str, path: str) -> bool:
+    if method == "GET" and path in {"/health", "/jobs", "/plans", "/memory/status", "/terminal/sessions"}:
+        return True
+    if method == "POST" and path in {"/plans", "/memory/recall", "/memory/ingest", "/terminal/sessions"}:
+        return True
+    if path.startswith("/jobs/"):
+        suffix = path.removeprefix("/jobs/").strip("/")
+        if not suffix:
+            return False
+        return (method == "GET" and "/" not in suffix) or (method == "POST" and suffix.endswith("/cancel"))
+    if path.startswith("/plans/"):
+        suffix = path.removeprefix("/plans/").strip("/")
+        if not suffix:
+            return False
+        if method == "GET":
+            return "/" not in suffix
+        return suffix.endswith(
+            ("/approve", "/approve_async", "/retry_failed", "/retry_failed_async", "/reject", "/undo")
+        )
+    if path.startswith("/terminal/sessions/"):
+        suffix = path.removeprefix("/terminal/sessions/").strip("/")
+        if not suffix:
+            return False
+        if method == "GET":
+            return "/" not in suffix or suffix.endswith("/output")
+        return suffix.endswith(("/input", "/close"))
+    return False
+
+
+def _auth_headers(token: str | None) -> dict[str, str]:
+    if not token:
+        return {}
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _decode_upstream_payload(raw: bytes, content_type: str | None) -> Any:
+    if not raw:
+        return {"ok": True}
+    text = raw.decode("utf-8", errors="replace")
+    if content_type and "json" in content_type.lower():
+        return json.loads(text)
+    if text.lstrip().startswith("{") or text.lstrip().startswith("["):
+        return json.loads(text)
+    return {"ok": True, "text": text}
+
+
+def _proxy_json_request(
+    base_url: str,
+    path: str,
+    *,
+    token: str | None,
+    method: str = "GET",
+    query: list[tuple[str, str]] | None = None,
+    body: Any | None = None,
+    timeout: float = AGENT_PROXY_TIMEOUT_DEFAULT_SECONDS,
+) -> Any:
+    url = f"{base_url}{path}"
+    if query:
+        url = f"{url}?{urlencode(query, doseq=True)}"
+    headers = {
+        "Accept": "application/json",
+        **_auth_headers(token),
+    }
+    data: bytes | None = None
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+        data = json.dumps(body).encode("utf-8")
+
+    request = UrlRequest(url, data=data, headers=headers, method=method)
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            return _decode_upstream_payload(response.read(), response.headers.get("Content-Type"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace").strip()
+        raise HTTPException(status_code=exc.code, detail=detail or exc.reason) from exc
+    except URLError as exc:
+        raise HTTPException(status_code=503, detail=f"Upstream unavailable: {exc.reason}") from exc
+
+
+async def _probe_optional_service(
+    base_url: str | None,
+    *,
+    token: str | None = None,
+    path: str,
+    query: list[tuple[str, str]] | None = None,
+    timeout: float,
+) -> dict[str, Any]:
+    if not base_url:
+        return {"configured": False, "ok": False}
+    try:
+        payload = await asyncio.to_thread(
+            _proxy_json_request,
+            base_url,
+            path,
+            token=token,
+            query=query,
+            timeout=timeout,
+        )
+        return {"configured": True, "ok": True, "payload": payload}
+    except HTTPException as exc:
+        return {"configured": True, "ok": False, "detail": exc.detail, "status_code": exc.status_code}
+
+
+def _ensure_novaadapt_enabled() -> None:
+    if not SETTINGS.novaadapt_enabled or not SETTINGS.novaadapt_bridge_url:
+        raise HTTPException(status_code=503, detail="NovaAdapt bridge is not configured.")
 
 
 def _prune_spectate_tokens(now_ts: float | None = None) -> None:
@@ -302,6 +419,19 @@ async def spectate_page() -> HTMLResponse:
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
+    novaadapt = await _probe_optional_service(
+        SETTINGS.novaadapt_bridge_url,
+        token=SETTINGS.novaadapt_bridge_token,
+        path="/health",
+        query=[("deep", "1")],
+        timeout=SETTINGS.novaadapt_timeout_seconds,
+    )
+    novaspine = await _probe_optional_service(
+        SETTINGS.novaspine_url,
+        token=SETTINGS.novaspine_token,
+        path="/api/v1/health",
+        timeout=SETTINGS.novaadapt_timeout_seconds,
+    )
     return {
         "ok": True,
         "started_at": STARTED_AT.isoformat(),
@@ -319,6 +449,16 @@ async def health() -> dict[str, Any]:
             "tmux": True,
             "stream": True,
             "spectate": True,
+            "agents": SETTINGS.novaadapt_enabled and bool(SETTINGS.novaadapt_bridge_url),
+        },
+        "novaadapt": {
+            "enabled": SETTINGS.novaadapt_enabled,
+            "bridge_url": SETTINGS.novaadapt_bridge_url,
+            **novaadapt,
+        },
+        "novaspine": {
+            "url": SETTINGS.novaspine_url,
+            **novaspine,
         },
         "audit_log": str(SETTINGS.audit_log),
     }
@@ -779,3 +919,42 @@ async def files_tail(path: str = Query(...), lines: int = Query(200, ge=1, le=50
     content = tail_text_file(resolved, lines, SETTINGS.max_read_bytes)
     AUDIT.write("files_tail", path=str(resolved), lines=lines)
     return {"path": str(resolved), "lines": lines, "content": content}
+
+
+@app.api_route("/agents/{subpath:path}", methods=["GET", "POST"])
+async def novaadapt_proxy(subpath: str, request: Request) -> Any:
+    _ensure_novaadapt_enabled()
+    upstream_path = _normalize_agent_proxy_path(subpath)
+    if not _is_allowed_agent_proxy_path(request.method, upstream_path):
+        raise HTTPException(status_code=404, detail="Unsupported NovaAdapt route.")
+
+    query = [(key, value) for key, value in request.query_params.multi_items()]
+    if upstream_path == "/health" and not any(key == "deep" for key, _ in query):
+        query.append(("deep", "1"))
+
+    payload: Any | None = None
+    if request.method != "GET":
+        raw_body = await request.body()
+        if raw_body:
+            try:
+                payload = json.loads(raw_body.decode("utf-8"))
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=400, detail="NovaAdapt proxy expects JSON payloads.") from exc
+
+    response = await asyncio.to_thread(
+        _proxy_json_request,
+        SETTINGS.novaadapt_bridge_url or "",
+        upstream_path,
+        token=SETTINGS.novaadapt_bridge_token,
+        method=request.method,
+        query=query,
+        body=payload,
+        timeout=SETTINGS.novaadapt_timeout_seconds,
+    )
+    AUDIT.write(
+        "novaadapt_proxy",
+        method=request.method,
+        path=upstream_path,
+        query=dict(query),
+    )
+    return response
