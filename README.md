@@ -135,7 +135,7 @@ python scripts/validate_nova_sidecars.py \
 ```
 
 CI now also runs:
-- a pinned NovaAdapt contract check against commit `cfb8983`
+- a pinned NovaAdapt contract check against merged `main` baseline commit `d7b2e1e`
 - the pinned compatibility baseline now lives in `compat/novaadapt_baseline.json`
 - a containerized sidecar smoke check with `codex_remote + NovaAdapt + NovaSpine`
 

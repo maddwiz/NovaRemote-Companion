@@ -99,8 +99,8 @@ DEFAULT_COMPANION_CAPABILITY_ROUTE_PROBES = {
 }
 
 DEFAULT_BASELINE_MANIFEST = {
-    "frozen_novaadapt_commit": "cfb8983",
-    "frozen_novaadapt_tag": "novaadapt-integration-freeze-cfb8983",
+    "frozen_novaadapt_commit": "d7b2e1e",
+    "frozen_novaadapt_tag": "novaadapt-main-baseline-d7b2e1e",
     "companion_protocol_version": "2026-03-11.1",
     "agent_contract_version": "2026-03-11.1",
     "required_openapi_paths": list(DEFAULT_REQUIRED_NOVAADAPT_OPENAPI_PATHS),

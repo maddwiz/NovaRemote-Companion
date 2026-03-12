@@ -36,7 +36,7 @@ This checklist gates open-sourcing Codex Remote as the public companion server f
 - [x] sidecar validator tests exist
 - [x] CI should run Python tests on every push/PR
 - [x] CI should run a sidecar smoke check in containerized mode
-- [x] compatibility test against pinned NovaAdapt branch should exist
+- [x] compatibility test against the pinned NovaAdapt baseline manifest should exist
 
 ## 5. Repository Hygiene
 
