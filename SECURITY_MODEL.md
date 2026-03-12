@@ -34,6 +34,7 @@ Current posture:
 - bearer tokens are static operator secrets
 - spectator links are intended to be short-lived and narrower in scope
 - sidecar bridge tokens are isolated from the primary mobile-facing token
+- protected HTTP APIs reject query-string bearer tokens; query-token fallback is reserved for websocket/browser spectator flows
 
 Recommended operational controls:
 - rotate `CODEXREMOTE_TOKEN` on team changes, device loss, or suspected disclosure

@@ -274,6 +274,7 @@ curl -X POST "$BASE/codex/run" \
 ```
 
 ## Notes
+- Protected HTTP APIs do not accept `?token=` query authentication. Use the `Authorization: Bearer <TOKEN>` header.
 - Websocket auth supports bearer token via query string for browser clients:
   - `ws://host:8787/tmux/stream?session=<name>&token=<TOKEN>`
 - Spectator links are read-only and time-limited:
