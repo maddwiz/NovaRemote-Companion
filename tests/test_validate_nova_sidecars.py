@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT))
 import scripts.validate_nova_sidecars as validate_module  # noqa: E402
 
 from scripts.validate_nova_sidecars import (  # noqa: E402
+    apply_baseline_manifest,
     parse_export_env_file,
     parse_env_file,
     validate_compose_text,
@@ -21,6 +22,9 @@ from scripts.validate_nova_sidecars import (  # noqa: E402
 
 
 class ValidateNovaSidecarsTest(unittest.TestCase):
+    def tearDown(self) -> None:
+        apply_baseline_manifest(None)
+
     def test_parse_env_file_ignores_comments(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             env_path = Path(tmp) / ".env.nova-sidecars"
@@ -96,6 +100,24 @@ class ValidateNovaSidecarsTest(unittest.TestCase):
     def test_validate_live_runtime_requires_token(self) -> None:
         issues = validate_live_runtime({})
         self.assertTrue(any(issue.level == "ERROR" for issue in issues))
+
+    def test_apply_baseline_manifest_overrides_expected_versions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "baseline.json"
+            manifest_path.write_text(
+                """{
+  "frozen_novaadapt_commit": "deadbee",
+  "frozen_novaadapt_tag": "novaadapt-test-freeze",
+  "companion_protocol_version": "2099-01-01.9",
+  "agent_contract_version": "2099-01-01.9"
+}""",
+                encoding="utf-8",
+            )
+            apply_baseline_manifest(manifest_path)
+            self.assertEqual(validate_module.EXPECTED_FROZEN_NOVAADAPT_COMMIT, "deadbee")
+            self.assertEqual(validate_module.EXPECTED_FROZEN_NOVAADAPT_TAG, "novaadapt-test-freeze")
+            self.assertEqual(validate_module.EXPECTED_COMPANION_PROTOCOL_VERSION, "2099-01-01.9")
+            self.assertEqual(validate_module.EXPECTED_AGENT_CONTRACT_VERSION, "2099-01-01.9")
 
     def test_validate_live_runtime_checks_agent_capabilities_contract(self) -> None:
         config = {

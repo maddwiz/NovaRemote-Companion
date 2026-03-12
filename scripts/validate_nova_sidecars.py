@@ -7,6 +7,7 @@ import importlib
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import threading
@@ -43,7 +44,7 @@ REQUIRED_COMPOSE_SNIPPETS = (
     "NOVAADAPT_SPINE_URL",
 )
 
-REQUIRED_NOVAADAPT_OPENAPI_PATHS = (
+DEFAULT_REQUIRED_NOVAADAPT_OPENAPI_PATHS = (
     "/health",
     "/jobs",
     "/jobs/{id}/stream",
@@ -72,7 +73,7 @@ REQUIRED_NOVAADAPT_OPENAPI_PATHS = (
     "/control/artifacts",
 )
 
-REQUIRED_COMPANION_CAPABILITY_KEYS = (
+DEFAULT_REQUIRED_COMPANION_CAPABILITY_KEYS = (
     "memoryStatus",
     "governance",
     "workflows",
@@ -87,7 +88,7 @@ REQUIRED_COMPANION_CAPABILITY_KEYS = (
     "mqttStatus",
 )
 
-COMPANION_CAPABILITY_ROUTE_PROBES = {
+DEFAULT_COMPANION_CAPABILITY_ROUTE_PROBES = {
     "controlArtifacts": "/agents/control/artifacts",
     "mobileStatus": "/agents/mobile/status",
     "browserStatus": "/agents/browser/status",
@@ -97,8 +98,53 @@ COMPANION_CAPABILITY_ROUTE_PROBES = {
     "mqttStatus": "/agents/iot/mqtt/status",
 }
 
-EXPECTED_COMPANION_PROTOCOL_VERSION = "2026-03-11.1"
-EXPECTED_AGENT_CONTRACT_VERSION = "2026-03-11.1"
+DEFAULT_BASELINE_MANIFEST = {
+    "frozen_novaadapt_commit": "cfb8983",
+    "frozen_novaadapt_tag": "novaadapt-integration-freeze-cfb8983",
+    "companion_protocol_version": "2026-03-11.1",
+    "agent_contract_version": "2026-03-11.1",
+    "required_openapi_paths": list(DEFAULT_REQUIRED_NOVAADAPT_OPENAPI_PATHS),
+    "required_companion_capability_keys": list(DEFAULT_REQUIRED_COMPANION_CAPABILITY_KEYS),
+    "companion_capability_route_probes": dict(DEFAULT_COMPANION_CAPABILITY_ROUTE_PROBES),
+}
+
+REQUIRED_NOVAADAPT_OPENAPI_PATHS: tuple[str, ...]
+REQUIRED_COMPANION_CAPABILITY_KEYS: tuple[str, ...]
+COMPANION_CAPABILITY_ROUTE_PROBES: dict[str, str]
+EXPECTED_COMPANION_PROTOCOL_VERSION: str
+EXPECTED_AGENT_CONTRACT_VERSION: str
+EXPECTED_FROZEN_NOVAADAPT_COMMIT: str
+EXPECTED_FROZEN_NOVAADAPT_TAG: str
+
+
+def apply_baseline_manifest(manifest_path: Path | None) -> Path | None:
+    manifest = dict(DEFAULT_BASELINE_MANIFEST)
+    resolved_manifest_path: Path | None = None
+    if manifest_path is not None:
+        resolved_manifest_path = manifest_path.expanduser().resolve()
+        manifest.update(json.loads(resolved_manifest_path.read_text(encoding="utf-8")))
+
+    global REQUIRED_NOVAADAPT_OPENAPI_PATHS
+    global REQUIRED_COMPANION_CAPABILITY_KEYS
+    global COMPANION_CAPABILITY_ROUTE_PROBES
+    global EXPECTED_COMPANION_PROTOCOL_VERSION
+    global EXPECTED_AGENT_CONTRACT_VERSION
+    global EXPECTED_FROZEN_NOVAADAPT_COMMIT
+    global EXPECTED_FROZEN_NOVAADAPT_TAG
+
+    REQUIRED_NOVAADAPT_OPENAPI_PATHS = tuple(str(path) for path in manifest["required_openapi_paths"])
+    REQUIRED_COMPANION_CAPABILITY_KEYS = tuple(str(key) for key in manifest["required_companion_capability_keys"])
+    COMPANION_CAPABILITY_ROUTE_PROBES = {
+        str(key): str(route) for key, route in dict(manifest["companion_capability_route_probes"]).items()
+    }
+    EXPECTED_COMPANION_PROTOCOL_VERSION = str(manifest["companion_protocol_version"])
+    EXPECTED_AGENT_CONTRACT_VERSION = str(manifest["agent_contract_version"])
+    EXPECTED_FROZEN_NOVAADAPT_COMMIT = str(manifest["frozen_novaadapt_commit"])
+    EXPECTED_FROZEN_NOVAADAPT_TAG = str(manifest["frozen_novaadapt_tag"])
+    return resolved_manifest_path
+
+
+apply_baseline_manifest(None)
 
 
 @dataclass(frozen=True)
@@ -367,6 +413,28 @@ def validate_novaadapt_repo_contract(repo_root: Path, novaadapt_repo_path: Path 
 
     if not resolved_repo.exists():
         return [ValidationIssue("ERROR", f"NovaAdapt repo does not exist: {resolved_repo}")]
+
+    try:
+        resolved_head = (
+            subprocess.run(
+                ["git", "-C", str(resolved_repo), "rev-parse", "--short", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            .stdout.strip()
+        )
+        if resolved_head != EXPECTED_FROZEN_NOVAADAPT_COMMIT:
+            issues.append(
+                ValidationIssue(
+                    "WARNING",
+                    "NovaAdapt checkout "
+                    f"{resolved_head} does not match frozen compatibility baseline "
+                    f"{EXPECTED_FROZEN_NOVAADAPT_COMMIT} ({EXPECTED_FROZEN_NOVAADAPT_TAG})",
+                )
+            )
+    except Exception as exc:
+        issues.append(ValidationIssue("WARNING", f"failed to resolve NovaAdapt git head: {exc}"))
 
     try:
         create_server, novaadapt_service_cls = _load_novaadapt_contract_runtime(resolved_repo)
@@ -669,6 +737,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="NovaAdapt repository checkout used for contract validation (defaults to env value or ../NovaAdapt)",
     )
+    parser.add_argument(
+        "--baseline-manifest",
+        type=Path,
+        default=Path("compat/novaadapt_baseline.json"),
+        help="Pinned NovaAdapt compatibility manifest relative to repo root",
+    )
     return parser
 
 
@@ -676,6 +750,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     repo_root = args.repo_root.expanduser().resolve()
+    manifest_path = args.baseline_manifest.expanduser()
+    if not manifest_path.is_absolute():
+        manifest_path = (repo_root / manifest_path).resolve()
+    if manifest_path.exists():
+        apply_baseline_manifest(manifest_path)
+    else:
+        apply_baseline_manifest(None)
     env_file = None if args.compose_only else args.env_file.expanduser()
     if env_file is not None and not env_file.is_absolute():
         env_file = (repo_root / env_file).resolve()
