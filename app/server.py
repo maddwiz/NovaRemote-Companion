@@ -177,10 +177,18 @@ def _is_allowed_agent_proxy_path(method: str, path: str) -> bool:
         "/workflows/status",
         "/workflows/list",
         "/workflows/item",
+        "/control/artifacts",
+        "/mobile/status",
+        "/browser/status",
+        "/voice/status",
+        "/canvas/status",
+        "/iot/homeassistant/status",
+        "/iot/mqtt/status",
     }:
         return True
     if method == "POST" and path in {
         "/plans",
+        "/templates/export",
         "/templates/import",
         "/memory/recall",
         "/memory/ingest",
@@ -214,7 +222,12 @@ def _is_allowed_agent_proxy_path(method: str, path: str) -> bool:
             return False
         if method == "GET":
             return "/" not in suffix
-        return suffix.endswith("/launch")
+        return suffix.endswith(("/launch", "/share"))
+    if path.startswith("/control/artifacts/"):
+        suffix = path.removeprefix("/control/artifacts/").strip("/")
+        if not suffix or method != "GET":
+            return False
+        return "/" not in suffix or suffix.endswith("/preview")
     if path.startswith("/terminal/sessions/"):
         suffix = path.removeprefix("/terminal/sessions/").strip("/")
         if not suffix:

@@ -87,6 +87,16 @@ REQUIRED_COMPANION_CAPABILITY_KEYS = (
     "mqttStatus",
 )
 
+COMPANION_CAPABILITY_ROUTE_PROBES = {
+    "controlArtifacts": "/agents/control/artifacts",
+    "mobileStatus": "/agents/mobile/status",
+    "browserStatus": "/agents/browser/status",
+    "voiceStatus": "/agents/voice/status",
+    "canvasStatus": "/agents/canvas/status",
+    "homeAssistantStatus": "/agents/iot/homeassistant/status",
+    "mqttStatus": "/agents/iot/mqtt/status",
+}
+
 
 @dataclass(frozen=True)
 class ValidationIssue:
@@ -536,6 +546,19 @@ def validate_live_runtime(config_values: dict[str, str]) -> list[ValidationIssue
                             f"Codex Remote /agents/capabilities is missing keys: {', '.join(missing_keys)}",
                         )
                     )
+                else:
+                    for capability_key, route in COMPANION_CAPABILITY_ROUTE_PROBES.items():
+                        if not capabilities.get(capability_key):
+                            continue
+                        try:
+                            _read_json(f"{base_url}{route}", auth_headers)
+                        except Exception as exc:
+                            issues.append(
+                                ValidationIssue(
+                                    "ERROR",
+                                    f"Codex Remote {route} failed despite {capability_key}=true: {exc}",
+                                )
+                            )
         except (OSError, error.URLError, error.HTTPError, json.JSONDecodeError) as exc:
             issues.append(ValidationIssue("ERROR", f"failed to query /agents/capabilities: {exc}"))
 

@@ -81,6 +81,9 @@ With that configured:
 - both `/health` and `/agents/capabilities` now include `protocol_version` and `agent_contract_version` for compatibility checks
 - `GET|POST /agents/*` proxies a safe allowlist of NovaAdapt bridge routes:
   - `/agents/health`
+  - `/agents/control/artifacts`
+  - `/agents/control/artifacts/{id}`
+  - `/agents/control/artifacts/{id}/preview`
   - `/agents/jobs`
   - `/agents/jobs/{id}`
   - `/agents/jobs/{id}/cancel`
@@ -95,6 +98,12 @@ With that configured:
   - `/agents/memory/status`
   - `/agents/memory/recall`
   - `/agents/memory/ingest`
+  - `/agents/mobile/status`
+  - `/agents/browser/status`
+  - `/agents/voice/status`
+  - `/agents/canvas/status`
+  - `/agents/iot/homeassistant/status`
+  - `/agents/iot/mqtt/status`
   - `/agents/runtime/governance`
   - `/agents/runtime/jobs/cancel_all`
   - `/agents/terminal/sessions`
@@ -102,6 +111,8 @@ With that configured:
   - `/agents/terminal/sessions/{id}/output`
   - `/agents/terminal/sessions/{id}/input`
   - `/agents/terminal/sessions/{id}/close`
+  - `/agents/templates/export`
+  - `/agents/templates/{id}/share`
 
 Validate the sidecar package before running Docker:
 

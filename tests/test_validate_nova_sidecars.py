@@ -134,12 +134,78 @@ class ValidateNovaSidecarsTest(unittest.TestCase):
                         "mqttStatus": True,
                     },
                 }
+            if url.endswith("/agents/control/artifacts"):
+                return {"items": []}
+            if url.endswith("/agents/mobile/status"):
+                return {"ok": True}
+            if url.endswith("/agents/browser/status"):
+                return {"ok": True}
+            if url.endswith("/agents/voice/status"):
+                return {"ok": True}
+            if url.endswith("/agents/canvas/status"):
+                return {"ok": True}
+            if url.endswith("/agents/iot/homeassistant/status"):
+                return {"ok": True}
+            if url.endswith("/agents/iot/mqtt/status"):
+                return {"ok": True}
             raise AssertionError(f"unexpected url: {url}")
 
         with patch.object(validate_module, "_read_json", side_effect=fake_read_json):
             issues = validate_live_runtime(config)
 
         self.assertEqual([], [issue for issue in issues if issue.level == "ERROR"])
+
+    def test_validate_live_runtime_flags_enabled_route_probe_failures(self) -> None:
+        config = {
+            "CODEXREMOTE_TOKEN": "token",
+            "CODEXREMOTE_BIND_HOST": "127.0.0.1",
+            "CODEXREMOTE_BIND_PORT": "8787",
+            "CODEXREMOTE_NOVAADAPT_ENABLED": "true",
+        }
+
+        def fake_read_json(url: str, headers: dict[str, str] | None = None) -> dict:
+            if url.endswith("/health"):
+                return {
+                    "ok": True,
+                    "features": {"agents": True},
+                    "novaadapt": {"ok": True},
+                }
+            if url.endswith("/agents/health"):
+                return {"ok": True}
+            if url.endswith("/agents/capabilities"):
+                return {
+                    "ok": True,
+                    "protocol_version": "2026-03-11.1",
+                    "agent_contract_version": "2026-03-11.1",
+                    "capabilities": {
+                        "memoryStatus": False,
+                        "governance": True,
+                        "workflows": True,
+                        "templates": False,
+                        "templateGallery": False,
+                        "controlArtifacts": True,
+                        "mobileStatus": False,
+                        "browserStatus": False,
+                        "voiceStatus": False,
+                        "canvasStatus": False,
+                        "homeAssistantStatus": False,
+                        "mqttStatus": False,
+                    },
+                }
+            if url.endswith("/agents/control/artifacts"):
+                raise RuntimeError("route probe failed")
+            raise AssertionError(f"unexpected url: {url}")
+
+        with patch.object(validate_module, "_read_json", side_effect=fake_read_json):
+            issues = validate_live_runtime(config)
+
+        self.assertTrue(
+            any(
+                issue.level == "ERROR"
+                and "/agents/control/artifacts failed despite controlArtifacts=true" in issue.message
+                for issue in issues
+            )
+        )
 
     def test_validate_live_runtime_flags_missing_capability_keys(self) -> None:
         config = {

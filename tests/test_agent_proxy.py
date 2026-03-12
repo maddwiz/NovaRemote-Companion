@@ -70,14 +70,25 @@ class AgentProxyHelpersTest(unittest.TestCase):
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/workflows/status"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/workflows/list"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/workflows/item"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/control/artifacts"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/control/artifacts/artifact-1"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/control/artifacts/artifact-1/preview"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/mobile/status"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/browser/status"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/voice/status"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/canvas/status"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/iot/homeassistant/status"))
+        self.assertTrue(_is_allowed_agent_proxy_path("GET", "/iot/mqtt/status"))
         self.assertTrue(_is_allowed_agent_proxy_path("GET", "/terminal/sessions/term-1/output"))
 
     def test_allows_expected_post_routes(self) -> None:
         self.assertTrue(_is_allowed_agent_proxy_path("POST", "/plans"))
         self.assertTrue(_is_allowed_agent_proxy_path("POST", "/plans/plan-1/approve_async"))
         self.assertTrue(_is_allowed_agent_proxy_path("POST", "/plans/plan-1/reject"))
+        self.assertTrue(_is_allowed_agent_proxy_path("POST", "/templates/export"))
         self.assertTrue(_is_allowed_agent_proxy_path("POST", "/templates/import"))
         self.assertTrue(_is_allowed_agent_proxy_path("POST", "/templates/template-1/launch"))
+        self.assertTrue(_is_allowed_agent_proxy_path("POST", "/templates/template-1/share"))
         self.assertTrue(_is_allowed_agent_proxy_path("POST", "/memory/recall"))
         self.assertTrue(_is_allowed_agent_proxy_path("POST", "/runtime/governance"))
         self.assertTrue(_is_allowed_agent_proxy_path("POST", "/runtime/jobs/cancel_all"))
@@ -93,19 +104,19 @@ class AgentProxyHelpersTest(unittest.TestCase):
 
     def test_rejects_unapproved_control_route_families(self) -> None:
         denied_routes = [
-            ("GET", "/mobile/status"),
             ("POST", "/mobile/action"),
             ("POST", "/execute/vision"),
-            ("GET", "/browser/status"),
             ("POST", "/browser/action"),
-            ("GET", "/voice/status"),
             ("POST", "/voice/transcribe"),
             ("POST", "/voice/synthesize"),
-            ("GET", "/canvas/status"),
             ("POST", "/canvas/render"),
             ("GET", "/adapt/toggle"),
             ("POST", "/adapt/toggle"),
             ("GET", "/adapt/persona"),
+            ("POST", "/control/artifacts"),
+            ("POST", "/control/artifacts/artifact-1/preview"),
+            ("POST", "/iot/homeassistant/status"),
+            ("POST", "/iot/mqtt/status"),
         ]
         for method, path in denied_routes:
             with self.subTest(method=method, path=path):
@@ -258,12 +269,52 @@ class OptionalServiceProbeResilienceTest(unittest.IsolatedAsyncioTestCase):
 
 
 class AgentProxyHttpRouteTest(unittest.TestCase):
+    def test_allowed_status_and_artifact_routes_reach_proxy_path(self) -> None:
+        with (
+            patch.object(server, "_ensure_novaadapt_enabled", return_value=None),
+            patch.object(
+                server,
+                "_proxy_json_request",
+                side_effect=[
+                    {"ok": True, "items": []},
+                    {"ok": True},
+                    {"ok": True},
+                    {"ok": True},
+                    {"ok": True},
+                    {"ok": True},
+                    {"ok": True},
+                ],
+            ) as proxy_mock,
+        ):
+            with _serve_app() as base_url:
+                for path in (
+                    "/control/artifacts",
+                    "/mobile/status",
+                    "/browser/status",
+                    "/voice/status",
+                    "/canvas/status",
+                    "/iot/homeassistant/status",
+                    "/iot/mqtt/status",
+                ):
+                    request = urllib.request.Request(
+                        f"{base_url}/agents{path}",
+                        headers={"Authorization": "Bearer test-token"},
+                        method="GET",
+                    )
+                    with urllib.request.urlopen(request, timeout=1) as response:
+                        self.assertEqual(response.status, 200)
+
+        self.assertEqual(proxy_mock.call_count, 7)
+
     def test_denied_routes_return_404_over_http(self) -> None:
         denied_routes = [
-            ("GET", "/browser/status"),
-            ("GET", "/mobile/status"),
+            ("POST", "/browser/status"),
+            ("POST", "/mobile/status"),
             ("POST", "/voice/transcribe"),
             ("POST", "/execute/vision"),
+            ("POST", "/canvas/status"),
+            ("POST", "/iot/homeassistant/status"),
+            ("POST", "/iot/mqtt/status"),
         ]
 
         with _serve_app() as base_url:
