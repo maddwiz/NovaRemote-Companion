@@ -111,6 +111,8 @@ class ValidateNovaSidecarsTest(unittest.TestCase):
                     "ok": True,
                     "features": {"agents": True},
                     "novaadapt": {"ok": True},
+                    "protocol_version": "2026-03-11.1",
+                    "agent_contract_version": "2026-03-11.1",
                 }
             if url.endswith("/agents/health"):
                 return {"ok": True}
@@ -169,6 +171,8 @@ class ValidateNovaSidecarsTest(unittest.TestCase):
                     "ok": True,
                     "features": {"agents": True},
                     "novaadapt": {"ok": True},
+                    "protocol_version": "2026-03-11.1",
+                    "agent_contract_version": "2026-03-11.1",
                 }
             if url.endswith("/agents/health"):
                 return {"ok": True}
@@ -221,6 +225,8 @@ class ValidateNovaSidecarsTest(unittest.TestCase):
                     "ok": True,
                     "features": {"agents": True},
                     "novaadapt": {"ok": True},
+                    "protocol_version": "2026-03-11.1",
+                    "agent_contract_version": "2026-03-11.1",
                 }
             if url.endswith("/agents/health"):
                 return {"ok": True}
@@ -245,6 +251,65 @@ class ValidateNovaSidecarsTest(unittest.TestCase):
                 and "missing keys" in issue.message
                 and "workflows" in issue.message
                 and "controlArtifacts" in issue.message
+                for issue in issues
+            )
+        )
+
+    def test_validate_live_runtime_flags_protocol_version_mismatch(self) -> None:
+        config = {
+            "CODEXREMOTE_TOKEN": "token",
+            "CODEXREMOTE_BIND_HOST": "127.0.0.1",
+            "CODEXREMOTE_BIND_PORT": "8787",
+            "CODEXREMOTE_NOVAADAPT_ENABLED": "true",
+        }
+
+        def fake_read_json(url: str, headers: dict[str, str] | None = None) -> dict:
+            if url.endswith("/health"):
+                return {
+                    "ok": True,
+                    "features": {"agents": True},
+                    "novaadapt": {"ok": True},
+                    "protocol_version": "2026-03-01.0",
+                    "agent_contract_version": "2026-03-11.1",
+                }
+            if url.endswith("/agents/health"):
+                return {"ok": True}
+            if url.endswith("/agents/capabilities"):
+                return {
+                    "ok": True,
+                    "protocol_version": "2026-03-11.1",
+                    "agent_contract_version": "2026-03-01.0",
+                    "capabilities": {
+                        "memoryStatus": False,
+                        "governance": False,
+                        "workflows": False,
+                        "templates": False,
+                        "templateGallery": False,
+                        "controlArtifacts": False,
+                        "mobileStatus": False,
+                        "browserStatus": False,
+                        "voiceStatus": False,
+                        "canvasStatus": False,
+                        "homeAssistantStatus": False,
+                        "mqttStatus": False,
+                    },
+                }
+            raise AssertionError(f"unexpected url: {url}")
+
+        with patch.object(validate_module, "_read_json", side_effect=fake_read_json):
+            issues = validate_live_runtime(config)
+
+        self.assertTrue(
+            any(
+                issue.level == "ERROR"
+                and "/health protocol_version" in issue.message
+                for issue in issues
+            )
+        )
+        self.assertTrue(
+            any(
+                issue.level == "ERROR"
+                and "/agents/capabilities agent_contract_version" in issue.message
                 for issue in issues
             )
         )

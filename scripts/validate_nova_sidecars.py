@@ -97,6 +97,9 @@ COMPANION_CAPABILITY_ROUTE_PROBES = {
     "mqttStatus": "/agents/iot/mqtt/status",
 }
 
+EXPECTED_COMPANION_PROTOCOL_VERSION = "2026-03-11.1"
+EXPECTED_AGENT_CONTRACT_VERSION = "2026-03-11.1"
+
 
 @dataclass(frozen=True)
 class ValidationIssue:
@@ -509,6 +512,28 @@ def validate_live_runtime(config_values: dict[str, str]) -> list[ValidationIssue
         issues.append(ValidationIssue("ERROR", "Codex Remote health endpoint did not return ok=true"))
     if not health_payload.get("features", {}).get("agents"):
         issues.append(ValidationIssue("ERROR", "Codex Remote agents feature is not enabled"))
+    health_protocol_version = str(health_payload.get("protocol_version") or "").strip()
+    if not health_protocol_version:
+        issues.append(ValidationIssue("ERROR", "Codex Remote /health did not return protocol_version"))
+    elif health_protocol_version != EXPECTED_COMPANION_PROTOCOL_VERSION:
+        issues.append(
+            ValidationIssue(
+                "ERROR",
+                "Codex Remote /health protocol_version "
+                f"{health_protocol_version!r} does not match expected {EXPECTED_COMPANION_PROTOCOL_VERSION!r}",
+            )
+        )
+    health_agent_contract_version = str(health_payload.get("agent_contract_version") or "").strip()
+    if not health_agent_contract_version:
+        issues.append(ValidationIssue("ERROR", "Codex Remote /health did not return agent_contract_version"))
+    elif health_agent_contract_version != EXPECTED_AGENT_CONTRACT_VERSION:
+        issues.append(
+            ValidationIssue(
+                "ERROR",
+                "Codex Remote /health agent_contract_version "
+                f"{health_agent_contract_version!r} does not match expected {EXPECTED_AGENT_CONTRACT_VERSION!r}",
+            )
+        )
 
     novaadapt_block = health_payload.get("novaadapt") or {}
     if config_values.get("CODEXREMOTE_NOVAADAPT_ENABLED", "").strip().lower() in {
@@ -532,8 +557,26 @@ def validate_live_runtime(config_values: dict[str, str]) -> list[ValidationIssue
                 issues.append(ValidationIssue("ERROR", "Codex Remote /agents/capabilities did not return ok=true"))
             if not str(capabilities_payload.get("protocol_version") or "").strip():
                 issues.append(ValidationIssue("ERROR", "Codex Remote /agents/capabilities did not return protocol_version"))
+            elif str(capabilities_payload.get("protocol_version")).strip() != EXPECTED_COMPANION_PROTOCOL_VERSION:
+                issues.append(
+                    ValidationIssue(
+                        "ERROR",
+                        "Codex Remote /agents/capabilities protocol_version "
+                        f"{str(capabilities_payload.get('protocol_version')).strip()!r} "
+                        f"does not match expected {EXPECTED_COMPANION_PROTOCOL_VERSION!r}",
+                    )
+                )
             if not str(capabilities_payload.get("agent_contract_version") or "").strip():
                 issues.append(ValidationIssue("ERROR", "Codex Remote /agents/capabilities did not return agent_contract_version"))
+            elif str(capabilities_payload.get("agent_contract_version")).strip() != EXPECTED_AGENT_CONTRACT_VERSION:
+                issues.append(
+                    ValidationIssue(
+                        "ERROR",
+                        "Codex Remote /agents/capabilities agent_contract_version "
+                        f"{str(capabilities_payload.get('agent_contract_version')).strip()!r} "
+                        f"does not match expected {EXPECTED_AGENT_CONTRACT_VERSION!r}",
+                    )
+                )
             capabilities = capabilities_payload.get("capabilities")
             if not isinstance(capabilities, dict):
                 issues.append(ValidationIssue("ERROR", "Codex Remote /agents/capabilities did not return a capabilities object"))

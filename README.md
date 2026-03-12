@@ -134,7 +134,7 @@ Validate the running host + sidecars end-to-end:
 python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars --live-check
 ```
 
-That live validation now checks the companion `/agents/capabilities` contract as well as `/health` and `/agents/health`.
+That live validation now checks the companion `/agents/capabilities` contract as well as `/health` and `/agents/health`, and it fails if the reported `protocol_version` / `agent_contract_version` drift from the current companion build.
 
 If the sidecars are already running and you never created `.env.nova-sidecars`, you can still run:
 
