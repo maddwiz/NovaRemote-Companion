@@ -23,6 +23,8 @@ Security model:
 - file list/read/tail
 - read-only live spectator links with browser viewer
 - dashboard web app
+- optional NovaAdapt bridge passthrough for agents, plans, jobs, and memory
+- optional NovaSpine health visibility for server-side memory deployments
 - macOS install script + launchd auto-start
 
 ## API
@@ -43,12 +45,155 @@ Security model:
 - `GET /files/list`
 - `GET /files/read`
 - `GET /files/tail`
+- `GET /agents/capabilities`
+- `GET|POST /agents/*` (authenticated NovaAdapt sidecar passthrough; allowlisted routes only)
+
+## Optional NovaAdapt + NovaSpine Sidecars
+
+You can keep Codex Remote as the single origin your phone talks to while running NovaAdapt and NovaSpine as separate services on the same machine.
+
+For a concrete operator setup, use [NOVAADAPT_SIDECAR_RUNBOOK.md](./NOVAADAPT_SIDECAR_RUNBOOK.md) together with:
+
+Also see:
+- [COMPANION_PROTOCOL.md](./COMPANION_PROTOCOL.md) for the app-facing contract
+- [OPEN_SOURCE_CHECKLIST.md](./OPEN_SOURCE_CHECKLIST.md) for the publication checklist
+- [SECURITY_MODEL.md](./SECURITY_MODEL.md) for auth, spectator-token, and revocation posture
+- [CONTRIBUTING.md](./CONTRIBUTING.md) for branch, test, and PR workflow
+- [RELEASE_NOTES_TEMPLATE.md](./RELEASE_NOTES_TEMPLATE.md) for release/change reporting
+
+This repository covers only the local/self-hosted companion boundary. Hosted team-cloud, billing, and other commercial control-plane services stay outside this repository.
+
+- [docker-compose.nova-sidecars.yml](./docker-compose.nova-sidecars.yml)
+- [.env.nova-sidecars.example](./.env.nova-sidecars.example)
+- [scripts/bootstrap_nova_sidecars.sh](./scripts/bootstrap_nova_sidecars.sh)
+- [scripts/validate_nova_sidecars.py](./scripts/validate_nova_sidecars.py)
+- [scripts/start_nova_sidecars.sh](./scripts/start_nova_sidecars.sh)
+- [scripts/stop_nova_sidecars.sh](./scripts/stop_nova_sidecars.sh)
+
+Set these environment variables in `~/.codexremote/config.env`:
+
+```bash
+export CODEXREMOTE_NOVAADAPT_ENABLED="true"
+export CODEXREMOTE_NOVAADAPT_BRIDGE_URL="http://127.0.0.1:9797"
+export CODEXREMOTE_NOVAADAPT_BRIDGE_TOKEN="replace-with-bridge-token"
+export CODEXREMOTE_NOVAADAPT_TIMEOUT_SECONDS="15"
+export CODEXREMOTE_NOVASPINE_URL="http://127.0.0.1:8420"
+export CODEXREMOTE_NOVASPINE_TOKEN="replace-with-spine-token"
+```
+
+With that configured:
+- `GET /health` includes `novaadapt` and `novaspine` status blocks
+- `GET /agents/capabilities` returns cached support flags for optional NovaAdapt route families (`memory`, `governance`, `workflows`, `templates`, `gallery`, `control-artifacts`, `mobile`, `browser`, `voice`, `canvas`, `home-assistant`, `mqtt`)
+- both `/health` and `/agents/capabilities` now include `protocol_version` and `agent_contract_version` for compatibility checks
+- `GET|POST /agents/*` proxies a safe allowlist of NovaAdapt bridge routes:
+  - `/agents/health`
+  - `/agents/control/artifacts`
+  - `/agents/control/artifacts/{id}`
+  - `/agents/control/artifacts/{id}/preview`
+  - `/agents/jobs`
+  - `/agents/jobs/{id}`
+  - `/agents/jobs/{id}/cancel`
+  - `/agents/plans`
+  - `/agents/plans/{id}`
+  - `/agents/plans/{id}/approve`
+  - `/agents/plans/{id}/approve_async`
+  - `/agents/plans/{id}/retry_failed`
+  - `/agents/plans/{id}/retry_failed_async`
+  - `/agents/plans/{id}/reject`
+  - `/agents/plans/{id}/undo`
+  - `/agents/memory/status`
+  - `/agents/memory/recall`
+  - `/agents/memory/ingest`
+  - `/agents/mobile/status`
+  - `/agents/browser/status`
+  - `/agents/voice/status`
+  - `/agents/canvas/status`
+  - `/agents/iot/homeassistant/status`
+  - `/agents/iot/mqtt/status`
+  - `/agents/runtime/governance`
+  - `/agents/runtime/jobs/cancel_all`
+  - `/agents/terminal/sessions`
+  - `/agents/terminal/sessions/{id}`
+  - `/agents/terminal/sessions/{id}/output`
+  - `/agents/terminal/sessions/{id}/input`
+  - `/agents/terminal/sessions/{id}/close`
+  - `/agents/templates/export`
+  - `/agents/templates/{id}/share`
+
+Validate the sidecar package before running Docker:
+
+```bash
+python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars
+```
+
+Validate the checked-out NovaAdapt branch against the companion contract before merging runtime upgrades:
+
+```bash
+python scripts/validate_nova_sidecars.py \
+  --env-file .env.nova-sidecars \
+  --novaadapt-contract-check
+```
+
+CI now also runs:
+- a pinned NovaAdapt contract check against commit `cfb8983`
+- a containerized sidecar smoke check with `codex_remote + NovaAdapt + NovaSpine`
+
+Validate the running host + sidecars end-to-end:
+
+```bash
+python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars --live-check
+```
+
+That live validation now checks the companion `/agents/capabilities` contract as well as `/health` and `/agents/health`, and it fails if the reported `protocol_version` / `agent_contract_version` drift from the current companion build.
+
+If the sidecars are already running and you never created `.env.nova-sidecars`, you can still run:
+
+```bash
+python scripts/validate_nova_sidecars.py --live-check
+```
+
+Start or stop the sidecars with the packaged helpers:
+
+```bash
+./scripts/bootstrap_nova_sidecars.sh
+./scripts/start_nova_sidecars.sh
+./scripts/stop_nova_sidecars.sh
+```
+
+The bootstrap helper retries live validation for up to 90 seconds after the containers start. That extra wait is required on a clean restart because NovaSpine may need to build/install its package before `/api/v1/health` becomes reachable.
+
+This keeps the agent runtime and memory service decoupled from Codex Remote while giving the mobile app one server origin.
+
+### Token rotation
+
+Rotate companion tokens by updating `~/.codexremote/config.env` and restarting the launchd service:
+
+```bash
+python - <<'PY'
+import secrets
+print(secrets.token_urlsafe(32))
+PY
+```
+
+Set the new values for:
+
+- `CODEXREMOTE_TOKEN`
+- `CODEXREMOTE_NOVAADAPT_BRIDGE_TOKEN`
+- `CODEXREMOTE_NOVASPINE_TOKEN` (if NovaSpine is enabled)
+
+Then restart:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/com.desmond.codexremote
+```
+
+If the sidecars are managed through Docker, restart them after rotating sidecar secrets so the bridge/core/spine containers pick up the new values.
 
 ## Install (macOS)
 Run from project root:
 
 ```bash
-cd /Users/desmondpottle/Documents/New\ project/codex_remote
+cd /path/to/codex_remote
 ./install_mac.sh
 ```
 
@@ -115,7 +260,7 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/health"
 curl -X POST "$BASE/tmux/session" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"session":"ops","cwd":"/Users/desmondpottle"}'
+  -d '{"session":"ops","cwd":"/path/to/workspace"}'
 
 curl -X POST "$BASE/shell/run" \
   -H "Authorization: Bearer $TOKEN" \
@@ -125,7 +270,7 @@ curl -X POST "$BASE/shell/run" \
 curl -X POST "$BASE/codex/run" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"cwd":"/Users/desmondpottle/Documents/New project/NovaSpine","prompt":"Fix failing tests and run them"}'
+  -d '{"cwd":"/path/to/project","prompt":"Fix failing tests and run them"}'
 ```
 
 ## Notes

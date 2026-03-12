@@ -1,0 +1,79 @@
+services:
+  novaspine:
+    image: python:3.12-slim
+    restart: unless-stopped
+    environment:
+      C3AE_API_TOKEN: ${NOVASPINE_TOKEN}
+      C3AE_DATA_DIR: /data
+      PYTHONUNBUFFERED: "1"
+    command:
+      - /bin/sh
+      - -lc
+      - >-
+        rm -rf /tmp/NovaSpine &&
+        mkdir -p /tmp/NovaSpine &&
+        cp /workspace/NovaSpine/pyproject.toml /workspace/NovaSpine/README.md /tmp/NovaSpine/ &&
+        cp -R /workspace/NovaSpine/src /tmp/NovaSpine/src &&
+        pip install --no-cache-dir /tmp/NovaSpine &&
+        novaspine serve --host 0.0.0.0 --port 8420
+    volumes:
+      - ${NOVASPINE_REPO_PATH:-../NovaSpine}:/workspace/NovaSpine:ro
+      - novaspine-data:/data
+    ports:
+      - "8420:8420"
+
+  novaadapt-core:
+    build:
+      context: ${NOVAADAPT_REPO_PATH:-../NovaAdapt}
+      dockerfile: deploy/docker/Dockerfile.core
+    restart: unless-stopped
+    depends_on:
+      - novaspine
+    environment:
+      NOVAADAPT_API_TOKEN: ${NOVAADAPT_CORE_TOKEN}
+      NOVAADAPT_MODEL_CONFIG: /app/config/models.example.json
+      NOVAADAPT_MEMORY_BACKEND: ${NOVAADAPT_MEMORY_BACKEND:-novaspine-http}
+      NOVAADAPT_SPINE_URL: ${NOVAADAPT_SPINE_URL:-http://novaspine:8420}
+      NOVAADAPT_SPINE_TOKEN: ${NOVAADAPT_SPINE_TOKEN:-}
+      NOVAADAPT_ENABLE_WORKFLOWS: ${NOVAADAPT_ENABLE_WORKFLOWS:-1}
+      NOVAADAPT_ENABLE_WORKFLOWS_API: ${NOVAADAPT_ENABLE_WORKFLOWS_API:-1}
+      OPENAI_API_KEY: ${NOVAADAPT_OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${NOVAADAPT_ANTHROPIC_API_KEY:-}
+      OLLAMA_HOST: ${NOVAADAPT_OLLAMA_HOST:-http://host.docker.internal:11434}
+    command:
+      - novaadapt
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8787"
+      - --api-token
+      - ${NOVAADAPT_CORE_TOKEN}
+      - --log-requests
+    ports:
+      - "8788:8787"
+
+  novaadapt-bridge:
+    build:
+      context: ${NOVAADAPT_REPO_PATH:-../NovaAdapt}
+      dockerfile: deploy/docker/Dockerfile.bridge
+    restart: unless-stopped
+    depends_on:
+      - novaadapt-core
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "9797"
+      - --core-url
+      - http://novaadapt-core:8787
+      - --bridge-token
+      - ${NOVAADAPT_BRIDGE_TOKEN}
+      - --core-token
+      - ${NOVAADAPT_CORE_TOKEN}
+      - --log-requests=true
+    ports:
+      - "9797:9797"
+
+volumes:
+  novaspine-data:

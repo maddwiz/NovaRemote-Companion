@@ -1,0 +1,14 @@
+{
+  "repo_root": "/Users/desmondpottle/Documents/New project/codex_remote",
+  "origin_url": "https://github.com/maddwiz/NovaRemote-Companion.git",
+  "repo_name": "NovaRemote-Companion",
+  "default_branch": "main",
+  "allowed_branch_prefixes": [
+    "swarm/",
+    "feat/",
+    "fix/",
+    "hotfix/",
+    "release/"
+  ],
+  "created_at_utc": "2026-03-11T21:10:00Z"
+}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+import json
 from pathlib import Path
 import secrets
 import shlex
@@ -9,11 +10,13 @@ import shutil
 import subprocess
 import time
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote_plus, urlencode
+from urllib.request import Request as UrlRequest, urlopen
 import uuid
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .audit import AuditLog
@@ -43,6 +46,14 @@ SPECTATE_TOKENS: dict[str, dict[str, Any]] = {}
 SPECTATE_TTL_MIN_SECONDS = 60
 SPECTATE_TTL_MAX_SECONDS = 86400
 SPECTATE_DEFAULT_TTL_SECONDS = 900
+AGENT_PROXY_TIMEOUT_DEFAULT_SECONDS = 15.0
+AGENT_CAPABILITIES_CACHE_TTL_SECONDS = 30.0
+AGENT_CAPABILITIES_CACHE: dict[str, Any] = {
+    "expires_at_ts": 0.0,
+    "payload": None,
+}
+COMPANION_PROTOCOL_VERSION = "2026-03-11.1"
+AGENT_CONTRACT_VERSION = "2026-03-11.1"
 
 app = FastAPI(
     title="Codex Remote",
@@ -141,6 +152,340 @@ def _extract_ws_token(websocket: WebSocket) -> str | None:
 
 def _clamp_spectate_ttl(ttl_seconds: int) -> int:
     return max(SPECTATE_TTL_MIN_SECONDS, min(ttl_seconds, SPECTATE_TTL_MAX_SECONDS))
+
+
+def _normalize_agent_proxy_path(subpath: str) -> str:
+    normalized = "/" + subpath.strip().lstrip("/")
+    return "/health" if normalized == "/" else normalized
+
+
+def _is_allowed_agent_proxy_path(method: str, path: str) -> bool:
+    # The companion is intentionally deny-by-default here. New NovaAdapt route
+    # families must be added explicitly with matching tests and docs so sidecar
+    # upgrades cannot silently widen the mobile-facing control surface.
+    if method == "GET" and path in {
+        "/health",
+        "/jobs",
+        "/plans",
+        "/templates",
+        "/gallery",
+        "/events",
+        "/events/stream",
+        "/memory/status",
+        "/terminal/sessions",
+        "/runtime/governance",
+        "/workflows/status",
+        "/workflows/list",
+        "/workflows/item",
+        "/control/artifacts",
+        "/mobile/status",
+        "/browser/status",
+        "/voice/status",
+        "/canvas/status",
+        "/iot/homeassistant/status",
+        "/iot/mqtt/status",
+    }:
+        return True
+    if method == "POST" and path in {
+        "/plans",
+        "/templates/export",
+        "/templates/import",
+        "/memory/recall",
+        "/memory/ingest",
+        "/runtime/governance",
+        "/runtime/jobs/cancel_all",
+        "/terminal/sessions",
+        "/workflows/start",
+        "/workflows/advance",
+        "/workflows/resume",
+    }:
+        return True
+    if path.startswith("/jobs/"):
+        suffix = path.removeprefix("/jobs/").strip("/")
+        if not suffix:
+            return False
+        return (method == "GET" and ("/" not in suffix or suffix.endswith("/stream"))) or (
+            method == "POST" and suffix.endswith("/cancel")
+        )
+    if path.startswith("/plans/"):
+        suffix = path.removeprefix("/plans/").strip("/")
+        if not suffix:
+            return False
+        if method == "GET":
+            return "/" not in suffix or suffix.endswith("/stream")
+        return suffix.endswith(
+            ("/approve", "/approve_async", "/retry_failed", "/retry_failed_async", "/reject", "/undo")
+        )
+    if path.startswith("/templates/"):
+        suffix = path.removeprefix("/templates/").strip("/")
+        if not suffix:
+            return False
+        if method == "GET":
+            return "/" not in suffix
+        return suffix.endswith(("/launch", "/share"))
+    if path.startswith("/control/artifacts/"):
+        suffix = path.removeprefix("/control/artifacts/").strip("/")
+        if not suffix or method != "GET":
+            return False
+        return "/" not in suffix or suffix.endswith("/preview")
+    if path.startswith("/terminal/sessions/"):
+        suffix = path.removeprefix("/terminal/sessions/").strip("/")
+        if not suffix:
+            return False
+        if method == "GET":
+            return "/" not in suffix or suffix.endswith("/output")
+        return suffix.endswith(("/input", "/close"))
+    return False
+
+
+def _auth_headers(token: str | None) -> dict[str, str]:
+    if not token:
+        return {}
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _decode_upstream_payload(raw: bytes, content_type: str | None) -> Any:
+    if not raw:
+        return {"ok": True}
+    text = raw.decode("utf-8", errors="replace")
+    if content_type and "json" in content_type.lower():
+        return json.loads(text)
+    if text.lstrip().startswith("{") or text.lstrip().startswith("["):
+        return json.loads(text)
+    return {"ok": True, "text": text}
+
+
+def _proxy_json_request(
+    base_url: str,
+    path: str,
+    *,
+    token: str | None,
+    method: str = "GET",
+    query: list[tuple[str, str]] | None = None,
+    body: Any | None = None,
+    timeout: float = AGENT_PROXY_TIMEOUT_DEFAULT_SECONDS,
+) -> Any:
+    url = f"{base_url}{path}"
+    if query:
+        url = f"{url}?{urlencode(query, doseq=True)}"
+    headers = {
+        "Accept": "application/json",
+        **_auth_headers(token),
+    }
+    data: bytes | None = None
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+        data = json.dumps(body).encode("utf-8")
+
+    request = UrlRequest(url, data=data, headers=headers, method=method)
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            return _decode_upstream_payload(response.read(), response.headers.get("Content-Type"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace").strip()
+        raise HTTPException(status_code=exc.code, detail=detail or exc.reason) from exc
+    except URLError as exc:
+        raise HTTPException(status_code=503, detail=f"Upstream unavailable: {exc.reason}") from exc
+    except OSError as exc:
+        detail = str(exc).strip() or exc.__class__.__name__
+        raise HTTPException(status_code=503, detail=f"Upstream unavailable: {detail}") from exc
+
+
+def _proxy_sse_stream(
+    base_url: str,
+    path: str,
+    *,
+    token: str | None,
+    query: list[tuple[str, str]] | None = None,
+    timeout: float = AGENT_PROXY_TIMEOUT_DEFAULT_SECONDS,
+):
+    url = f"{base_url}{path}"
+    if query:
+        url = f"{url}?{urlencode(query, doseq=True)}"
+    headers = {
+        "Accept": "text/event-stream",
+        "Cache-Control": "no-cache",
+        **_auth_headers(token),
+    }
+    request = UrlRequest(url, headers=headers, method="GET")
+
+    try:
+        response = urlopen(request, timeout=timeout)
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace").strip()
+        raise HTTPException(status_code=exc.code, detail=detail or exc.reason) from exc
+    except URLError as exc:
+        raise HTTPException(status_code=503, detail=f"Upstream unavailable: {exc.reason}") from exc
+    except OSError as exc:
+        detail = str(exc).strip() or exc.__class__.__name__
+        raise HTTPException(status_code=503, detail=f"Upstream unavailable: {detail}") from exc
+
+    def iterator():
+        try:
+            while True:
+                chunk = response.readline()
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            try:
+                response.close()
+            except Exception:
+                pass
+
+    return iterator()
+
+
+async def _probe_optional_service(
+    base_url: str | None,
+    *,
+    token: str | None = None,
+    path: str,
+    query: list[tuple[str, str]] | None = None,
+    timeout: float,
+) -> dict[str, Any]:
+    if not base_url:
+        return {"configured": False, "ok": False}
+    try:
+        payload = await asyncio.to_thread(
+            _proxy_json_request,
+            base_url,
+            path,
+            token=token,
+            query=query,
+            timeout=timeout,
+        )
+        return {"configured": True, "ok": True, "payload": payload}
+    except HTTPException as exc:
+        return {"configured": True, "ok": False, "detail": exc.detail, "status_code": exc.status_code}
+
+
+def _ensure_novaadapt_enabled() -> None:
+    if not SETTINGS.novaadapt_enabled or not SETTINGS.novaadapt_bridge_url:
+        raise HTTPException(status_code=503, detail="NovaAdapt bridge is not configured.")
+
+
+def _optional_route_supported(result: dict[str, Any]) -> bool:
+    if not result.get("configured"):
+        return False
+    status_code = result.get("status_code")
+    return status_code != 404
+
+
+async def _compute_novaadapt_capabilities() -> dict[str, bool]:
+    memory_status, governance, workflows, templates, template_gallery, control_artifacts, mobile_status, browser_status, voice_status, canvas_status, homeassistant_status, mqtt_status = await asyncio.gather(
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/memory/status",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/runtime/governance",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/workflows/list",
+            query=[("limit", "1"), ("context", "api")],
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/templates",
+            query=[("limit", "1")],
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/gallery",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/control/artifacts",
+            query=[("limit", "1")],
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/mobile/status",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/browser/status",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/voice/status",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/canvas/status",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/iot/homeassistant/status",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/iot/mqtt/status",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+    )
+    return {
+        "memoryStatus": _optional_route_supported(memory_status),
+        "governance": _optional_route_supported(governance),
+        "workflows": _optional_route_supported(workflows),
+        "templates": _optional_route_supported(templates),
+        "templateGallery": _optional_route_supported(template_gallery),
+        "controlArtifacts": _optional_route_supported(control_artifacts),
+        "mobileStatus": _optional_route_supported(mobile_status),
+        "browserStatus": _optional_route_supported(browser_status),
+        "voiceStatus": _optional_route_supported(voice_status),
+        "canvasStatus": _optional_route_supported(canvas_status),
+        "homeAssistantStatus": _optional_route_supported(homeassistant_status),
+        "mqttStatus": _optional_route_supported(mqtt_status),
+    }
+
+
+async def _novaadapt_capabilities_payload(*, force: bool = False) -> dict[str, Any]:
+    _ensure_novaadapt_enabled()
+    now_ts = time.time()
+    cached_payload = AGENT_CAPABILITIES_CACHE.get("payload")
+    expires_at_ts = float(AGENT_CAPABILITIES_CACHE.get("expires_at_ts", 0.0))
+    if not force and isinstance(cached_payload, dict) and expires_at_ts > now_ts:
+        return {**cached_payload, "cached": True}
+
+    capabilities = await _compute_novaadapt_capabilities()
+    payload = {
+        "ok": True,
+        "protocol_version": COMPANION_PROTOCOL_VERSION,
+        "agent_contract_version": AGENT_CONTRACT_VERSION,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "cached": False,
+        "capabilities": capabilities,
+    }
+    AGENT_CAPABILITIES_CACHE["payload"] = payload
+    AGENT_CAPABILITIES_CACHE["expires_at_ts"] = now_ts + AGENT_CAPABILITIES_CACHE_TTL_SECONDS
+    return payload
 
 
 def _prune_spectate_tokens(now_ts: float | None = None) -> None:
@@ -302,8 +647,23 @@ async def spectate_page() -> HTMLResponse:
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
+    novaadapt = await _probe_optional_service(
+        SETTINGS.novaadapt_bridge_url,
+        token=SETTINGS.novaadapt_bridge_token,
+        path="/health",
+        query=[("deep", "1")],
+        timeout=SETTINGS.novaadapt_timeout_seconds,
+    )
+    novaspine = await _probe_optional_service(
+        SETTINGS.novaspine_url,
+        token=SETTINGS.novaspine_token,
+        path="/api/v1/health",
+        timeout=SETTINGS.novaadapt_timeout_seconds,
+    )
     return {
         "ok": True,
+        "protocol_version": COMPANION_PROTOCOL_VERSION,
+        "agent_contract_version": AGENT_CONTRACT_VERSION,
         "started_at": STARTED_AT.isoformat(),
         "tmux": {
             "binary": SETTINGS.tmux_bin,
@@ -319,6 +679,16 @@ async def health() -> dict[str, Any]:
             "tmux": True,
             "stream": True,
             "spectate": True,
+            "agents": SETTINGS.novaadapt_enabled and bool(SETTINGS.novaadapt_bridge_url),
+        },
+        "novaadapt": {
+            "enabled": SETTINGS.novaadapt_enabled,
+            "bridge_url": SETTINGS.novaadapt_bridge_url,
+            **novaadapt,
+        },
+        "novaspine": {
+            "url": SETTINGS.novaspine_url,
+            **novaspine,
         },
         "audit_log": str(SETTINGS.audit_log),
     }
@@ -779,3 +1149,74 @@ async def files_tail(path: str = Query(...), lines: int = Query(200, ge=1, le=50
     content = tail_text_file(resolved, lines, SETTINGS.max_read_bytes)
     AUDIT.write("files_tail", path=str(resolved), lines=lines)
     return {"path": str(resolved), "lines": lines, "content": content}
+
+
+@app.get("/agents/capabilities")
+async def novaadapt_capabilities(force: bool = Query(False)) -> dict[str, Any]:
+    payload = await _novaadapt_capabilities_payload(force=force)
+    AUDIT.write("novaadapt_capabilities", force=force, cached=bool(payload.get("cached")))
+    return payload
+
+
+@app.api_route("/agents/{subpath:path}", methods=["GET", "POST"])
+async def novaadapt_proxy(subpath: str, request: Request) -> Any:
+    _ensure_novaadapt_enabled()
+    upstream_path = _normalize_agent_proxy_path(subpath)
+    if not _is_allowed_agent_proxy_path(request.method, upstream_path):
+        raise HTTPException(status_code=404, detail="Unsupported NovaAdapt route.")
+
+    query = [(key, value) for key, value in request.query_params.multi_items()]
+    if upstream_path == "/health" and not any(key == "deep" for key, _ in query):
+        query.append(("deep", "1"))
+
+    payload: Any | None = None
+    if request.method != "GET":
+        raw_body = await request.body()
+        if raw_body:
+            try:
+                payload = json.loads(raw_body.decode("utf-8"))
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=400, detail="NovaAdapt proxy expects JSON payloads.") from exc
+
+    if request.method == "GET" and upstream_path.endswith("/stream"):
+        stream = await asyncio.to_thread(
+            _proxy_sse_stream,
+            SETTINGS.novaadapt_bridge_url or "",
+            upstream_path,
+            token=SETTINGS.novaadapt_bridge_token,
+            query=query,
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        )
+        AUDIT.write(
+            "novaadapt_proxy",
+            method=request.method,
+            path=upstream_path,
+            query=dict(query),
+            stream=True,
+        )
+        return StreamingResponse(
+            stream,
+            media_type="text/event-stream; charset=utf-8",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            },
+        )
+
+    response = await asyncio.to_thread(
+        _proxy_json_request,
+        SETTINGS.novaadapt_bridge_url or "",
+        upstream_path,
+        token=SETTINGS.novaadapt_bridge_token,
+        method=request.method,
+        query=query,
+        body=payload,
+        timeout=SETTINGS.novaadapt_timeout_seconds,
+    )
+    AUDIT.write(
+        "novaadapt_proxy",
+        method=request.method,
+        path=upstream_path,
+        query=dict(query),
+    )
+    return response
