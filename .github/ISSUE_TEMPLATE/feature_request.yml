@@ -1,0 +1,21 @@
+name: Feature request
+description: Propose a new Codex Remote feature or protocol enhancement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Contract impact
+      description: Note any `/health`, `/agents/*`, auth, websocket, or SSE changes.

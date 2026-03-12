@@ -9,17 +9,18 @@ This checklist gates open-sourcing Codex Remote as the public companion server f
 - [x] companion `/health` returns sidecar status
 - [x] companion `/agents/capabilities` exists and is validated
 - [x] allowlisted `/agents/*` proxy surface is documented
-- [ ] websocket/SSE behavior is documented for all public streaming routes
-- [ ] versioning policy is written down for companion protocol changes
+- [x] websocket/SSE behavior is documented for all public streaming routes
+- [x] versioning policy is written down for companion protocol changes
 
 ## 2. Security Boundary
 
 - [x] bearer token is required for protected HTTP APIs
 - [x] websocket/browser token fallback is documented
 - [x] NovaAdapt routes are allowlisted instead of open passthrough
-- [ ] threat review for spectator token/query-token behavior
-- [ ] explicit token rotation guidance in README/runbook
+- [x] threat review for spectator token/query-token behavior
+- [x] explicit token rotation guidance in README/runbook
 - [ ] rate-limit/revocation posture documented for public release
+- [x] rate-limit/revocation posture documented for public release
 
 ## 3. Sidecar Packaging
 
@@ -34,7 +35,7 @@ This checklist gates open-sourcing Codex Remote as the public companion server f
 
 - [x] Python unit tests exist for agent proxy routes
 - [x] sidecar validator tests exist
-- [ ] CI should run Python tests on every push/PR
+- [x] CI should run Python tests on every push/PR
 - [ ] CI should run a sidecar smoke check in containerized mode
 - [ ] compatibility test against pinned NovaAdapt branch should exist
 
@@ -42,8 +43,8 @@ This checklist gates open-sourcing Codex Remote as the public companion server f
 
 - [ ] remove or isolate any local-machine assumptions from docs/examples
 - [ ] separate commercial/team-cloud guidance from open companion README
-- [ ] add issue templates / contribution guide
-- [ ] add release notes template and changelog policy
+- [x] add issue templates / contribution guide
+- [x] add release notes template and changelog policy
 
 ## 6. Launch Criteria
 

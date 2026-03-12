@@ -57,6 +57,9 @@ For a concrete operator setup, use [NOVAADAPT_SIDECAR_RUNBOOK.md](./NOVAADAPT_SI
 Also see:
 - [COMPANION_PROTOCOL.md](./COMPANION_PROTOCOL.md) for the app-facing contract
 - [OPEN_SOURCE_CHECKLIST.md](./OPEN_SOURCE_CHECKLIST.md) for the publication checklist
+- [SECURITY_MODEL.md](./SECURITY_MODEL.md) for auth, spectator-token, and revocation posture
+- [CONTRIBUTING.md](./CONTRIBUTING.md) for branch, test, and PR workflow
+- [RELEASE_NOTES_TEMPLATE.md](./RELEASE_NOTES_TEMPLATE.md) for release/change reporting
 
 - [docker-compose.nova-sidecars.yml](./docker-compose.nova-sidecars.yml)
 - [.env.nova-sidecars.example](./.env.nova-sidecars.example)
@@ -150,6 +153,31 @@ Start or stop the sidecars with the packaged helpers:
 ```
 
 This keeps the agent runtime and memory service decoupled from Codex Remote while giving the mobile app one server origin.
+
+### Token rotation
+
+Rotate companion tokens by updating `~/.codexremote/config.env` and restarting the launchd service:
+
+```bash
+python - <<'PY'
+import secrets
+print(secrets.token_urlsafe(32))
+PY
+```
+
+Set the new values for:
+
+- `CODEXREMOTE_TOKEN`
+- `CODEXREMOTE_NOVAADAPT_BRIDGE_TOKEN`
+- `CODEXREMOTE_NOVASPINE_TOKEN` (if NovaSpine is enabled)
+
+Then restart:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/com.desmond.codexremote
+```
+
+If the sidecars are managed through Docker, restart them after rotating sidecar secrets so the bridge/core/spine containers pick up the new values.
 
 ## Install (macOS)
 Run from project root:

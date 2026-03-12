@@ -27,6 +27,22 @@ Authorization: Bearer <CODEXREMOTE_TOKEN>
 
 Websocket/browser routes also support token query parameters for browser-only contexts.
 
+## Versioning Policy
+
+Codex Remote publishes two compatibility markers:
+
+- `protocol_version`
+- `agent_contract_version`
+
+Rules:
+
+- `protocol_version` changes whenever the mobile-facing companion envelope changes (`/health`, `/agents/capabilities`, auth semantics, or streamed event framing).
+- `agent_contract_version` changes whenever the allowlisted `/agents/*` contract changes in a way the app must understand.
+- Additive route exposure should still bump the relevant version if the app’s capability handling or fallback behavior must change.
+- Live sidecar validation is expected to fail if the running companion reports versions older or newer than the checked-out validator expects.
+
+This is intentional: operators should notice contract drift before they assume a runtime stack is healthy.
+
 ## Core Health Contract
 
 ### `GET /health`
@@ -87,6 +103,39 @@ Required capability keys:
 - `templateGallery`
 
 This endpoint exists so NovaRemote can avoid probing unsupported optional NovaAdapt routes on every refresh.
+
+## Streaming Routes
+
+The companion currently exposes two streaming transports:
+
+### WebSocket
+
+- `WS /tmux/stream`
+- `WS /spectate/stream`
+
+Auth:
+
+- bearer header for native/app clients
+- `?token=` query support for browser viewers
+
+Behavior:
+
+- newline-delimited terminal deltas
+- reconnect is client-driven
+- no public guarantee of replay beyond the normal tail/session APIs
+
+### Server-Sent Events (SSE)
+
+- `GET /agents/events/stream`
+- `GET /agents/plans/{id}/stream`
+- `GET /agents/jobs/{id}/stream`
+
+Behavior:
+
+- `text/event-stream`
+- event names and payloads are bridge-defined pass-throughs from NovaAdapt
+- mobile clients should treat SSE as live-state enhancement, not the only source of truth
+- normal JSON reads (`/agents/events`, `/agents/plans`, `/agents/jobs`) remain the recovery path after reconnects or missed events
 
 ## Allowlisted `/agents/*` Routes
 
@@ -195,6 +244,12 @@ That live validation checks:
 - `GET /health`
 - `GET /agents/health`
 - `GET /agents/capabilities`
+
+It also verifies:
+- required capability keys exist
+- any enabled read-only sidecar route family answers through the companion
+- `protocol_version` matches the checked-out companion build
+- `agent_contract_version` matches the checked-out companion build
 
 The deployment is not considered healthy if `/agents/capabilities` is missing required keys.
 

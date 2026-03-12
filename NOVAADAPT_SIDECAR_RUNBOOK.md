@@ -208,3 +208,35 @@ Phone behavior after rollback:
 
 - Codex Remote still works normally
 - NovaRemote falls back to the in-app NovaAdapt preview/runtime paths where supported
+
+## Token rotation
+
+When rotating sidecar credentials, update both the sidecar env file and the host companion config:
+
+1. Generate replacement secrets for:
+   - `NOVAADAPT_CORE_TOKEN`
+   - `NOVAADAPT_BRIDGE_TOKEN`
+   - `NOVASPINE_TOKEN`
+   - `CODEXREMOTE_TOKEN` if you are rotating the mobile-facing companion auth too
+2. Update:
+   - `.env.nova-sidecars`
+   - `~/.codexremote/config.env`
+3. Restart both layers:
+
+```bash
+./scripts/stop_nova_sidecars.sh
+./scripts/start_nova_sidecars.sh
+launchctl kickstart -k gui/$(id -u)/com.desmond.codexremote
+```
+
+4. Re-run:
+
+```bash
+python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars --live-check
+```
+
+Do not rotate only one side of the bridge. A mismatched bridge/core/spine token set will make `/health` and `/agents/capabilities` fail fast, which is the intended behavior.
+
+See also:
+- [COMPANION_PROTOCOL.md](./COMPANION_PROTOCOL.md)
+- [SECURITY_MODEL.md](./SECURITY_MODEL.md)
