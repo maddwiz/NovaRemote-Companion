@@ -61,8 +61,11 @@ Also see:
 - [CONTRIBUTING.md](./CONTRIBUTING.md) for branch, test, and PR workflow
 - [RELEASE_NOTES_TEMPLATE.md](./RELEASE_NOTES_TEMPLATE.md) for release/change reporting
 
+This repository covers only the local/self-hosted companion boundary. Hosted team-cloud, billing, and other commercial control-plane services stay outside this repository.
+
 - [docker-compose.nova-sidecars.yml](./docker-compose.nova-sidecars.yml)
 - [.env.nova-sidecars.example](./.env.nova-sidecars.example)
+- [scripts/bootstrap_nova_sidecars.sh](./scripts/bootstrap_nova_sidecars.sh)
 - [scripts/validate_nova_sidecars.py](./scripts/validate_nova_sidecars.py)
 - [scripts/start_nova_sidecars.sh](./scripts/start_nova_sidecars.sh)
 - [scripts/stop_nova_sidecars.sh](./scripts/stop_nova_sidecars.sh)
@@ -131,6 +134,10 @@ python scripts/validate_nova_sidecars.py \
   --novaadapt-contract-check
 ```
 
+CI now also runs:
+- a pinned NovaAdapt contract check against commit `cfb8983`
+- a containerized sidecar smoke check with `codex_remote + NovaAdapt + NovaSpine`
+
 Validate the running host + sidecars end-to-end:
 
 ```bash
@@ -148,6 +155,7 @@ python scripts/validate_nova_sidecars.py --live-check
 Start or stop the sidecars with the packaged helpers:
 
 ```bash
+./scripts/bootstrap_nova_sidecars.sh
 ./scripts/start_nova_sidecars.sh
 ./scripts/stop_nova_sidecars.sh
 ```
@@ -183,7 +191,7 @@ If the sidecars are managed through Docker, restart them after rotating sidecar 
 Run from project root:
 
 ```bash
-cd /Users/desmondpottle/Documents/New\ project/codex_remote
+cd /path/to/codex_remote
 ./install_mac.sh
 ```
 
@@ -250,7 +258,7 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/health"
 curl -X POST "$BASE/tmux/session" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"session":"ops","cwd":"/Users/desmondpottle"}'
+  -d '{"session":"ops","cwd":"/path/to/workspace"}'
 
 curl -X POST "$BASE/shell/run" \
   -H "Authorization: Bearer $TOKEN" \
@@ -260,7 +268,7 @@ curl -X POST "$BASE/shell/run" \
 curl -X POST "$BASE/codex/run" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"cwd":"/Users/desmondpottle/Documents/New project/NovaSpine","prompt":"Fix failing tests and run them"}'
+  -d '{"cwd":"/path/to/project","prompt":"Fix failing tests and run them"}'
 ```
 
 ## Notes

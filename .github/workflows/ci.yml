@@ -38,3 +38,141 @@ jobs:
         run: |
           . .venv/bin/activate
           python -m unittest discover -s tests -p 'test_*.py'
+
+  novaadapt-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout codex_remote
+        uses: actions/checkout@v4
+        with:
+          path: codex_remote
+
+      - name: Checkout NovaAdapt (pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: maddwiz/NovaAdapt
+          ref: cfb8983
+          path: NovaAdapt
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: codex_remote
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate pinned NovaAdapt contract
+        working-directory: codex_remote
+        run: |
+          . .venv/bin/activate
+          python scripts/validate_nova_sidecars.py \
+            --compose-only \
+            --novaadapt-contract-check \
+            --novaadapt-repo-path ../NovaAdapt
+
+  sidecar-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout codex_remote
+        uses: actions/checkout@v4
+        with:
+          path: codex_remote
+
+      - name: Checkout NovaAdapt (pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: maddwiz/NovaAdapt
+          ref: cfb8983
+          path: NovaAdapt
+
+      - name: Checkout NovaSpine
+        uses: actions/checkout@v4
+        with:
+          repository: maddwiz/NovaSpine
+          path: NovaSpine
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: codex_remote
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Prepare sidecar env
+        working-directory: codex_remote
+        run: |
+          cat > .env.nova-sidecars.ci <<'EOF'
+          NOVAADAPT_REPO_PATH=../NovaAdapt
+          NOVASPINE_REPO_PATH=../NovaSpine
+          NOVAADAPT_CORE_TOKEN=ci-core-token
+          NOVAADAPT_BRIDGE_TOKEN=ci-bridge-token
+          NOVASPINE_TOKEN=ci-spine-token
+          NOVAADAPT_MEMORY_BACKEND=novaspine-http
+          NOVAADAPT_SPINE_URL=http://novaspine:8420
+          NOVAADAPT_SPINE_TOKEN=ci-spine-token
+          NOVAADAPT_ENABLE_WORKFLOWS=1
+          NOVAADAPT_ENABLE_WORKFLOWS_API=1
+          NOVAADAPT_OLLAMA_HOST=http://host.docker.internal:11434
+          EOF
+
+      - name: Validate package
+        working-directory: codex_remote
+        run: |
+          . .venv/bin/activate
+          python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars.ci
+
+      - name: Start sidecars
+        working-directory: codex_remote
+        run: |
+          docker compose --env-file .env.nova-sidecars.ci -f docker-compose.nova-sidecars.yml up -d --build
+
+      - name: Start companion server
+        working-directory: codex_remote
+        run: |
+          mkdir -p "${HOME}/.codexremote"
+          cat > "${HOME}/.codexremote/config.env" <<'EOF'
+          export CODEXREMOTE_TOKEN=ci-main-token
+          export CODEXREMOTE_BIND_HOST=127.0.0.1
+          export CODEXREMOTE_BIND_PORT=8787
+          export CODEXREMOTE_DEFAULT_CWD=/tmp
+          export CODEXREMOTE_NOVAADAPT_ENABLED=true
+          export CODEXREMOTE_NOVAADAPT_BRIDGE_URL=http://127.0.0.1:9797
+          export CODEXREMOTE_NOVAADAPT_BRIDGE_TOKEN=ci-bridge-token
+          export CODEXREMOTE_NOVAADAPT_TIMEOUT_SECONDS=15
+          export CODEXREMOTE_NOVASPINE_URL=http://127.0.0.1:8420
+          export CODEXREMOTE_NOVASPINE_TOKEN=ci-spine-token
+          EOF
+          . .venv/bin/activate
+          nohup ./scripts/start_server.sh > /tmp/codex_remote.log 2>&1 &
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8787/health -H 'Authorization: Bearer ci-main-token' >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/codex_remote.log || true
+          exit 1
+
+      - name: Live sidecar validation
+        working-directory: codex_remote
+        run: |
+          . .venv/bin/activate
+          python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars.ci --live-check
+
+      - name: Stop sidecars
+        if: always()
+        working-directory: codex_remote
+        run: |
+          docker compose --env-file .env.nova-sidecars.ci -f docker-compose.nova-sidecars.yml down -v || true

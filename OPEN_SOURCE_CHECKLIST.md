@@ -19,7 +19,6 @@ This checklist gates open-sourcing Codex Remote as the public companion server f
 - [x] NovaAdapt routes are allowlisted instead of open passthrough
 - [x] threat review for spectator token/query-token behavior
 - [x] explicit token rotation guidance in README/runbook
-- [ ] rate-limit/revocation posture documented for public release
 - [x] rate-limit/revocation posture documented for public release
 
 ## 3. Sidecar Packaging
@@ -28,7 +27,7 @@ This checklist gates open-sourcing Codex Remote as the public companion server f
 - [x] sidecar env example exists
 - [x] local validator checks package and live host
 - [x] live validation includes capability contract
-- [ ] one-command bootstrap for sidecars is documented beyond local macOS flow
+- [x] one-command bootstrap for sidecars is documented beyond local macOS flow
 - [ ] rollback examples verified on clean machine
 
 ## 4. CI and Verification
@@ -36,13 +35,13 @@ This checklist gates open-sourcing Codex Remote as the public companion server f
 - [x] Python unit tests exist for agent proxy routes
 - [x] sidecar validator tests exist
 - [x] CI should run Python tests on every push/PR
-- [ ] CI should run a sidecar smoke check in containerized mode
-- [ ] compatibility test against pinned NovaAdapt branch should exist
+- [x] CI should run a sidecar smoke check in containerized mode
+- [x] compatibility test against pinned NovaAdapt branch should exist
 
 ## 5. Repository Hygiene
 
-- [ ] remove or isolate any local-machine assumptions from docs/examples
-- [ ] separate commercial/team-cloud guidance from open companion README
+- [x] remove or isolate any local-machine assumptions from docs/examples
+- [x] separate commercial/team-cloud guidance from open companion README
 - [x] add issue templates / contribution guide
 - [x] add release notes template and changelog policy
 

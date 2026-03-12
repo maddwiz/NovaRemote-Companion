@@ -48,6 +48,14 @@ Edit at minimum:
 
 ## 2. Start sidecars
 
+One-command bootstrap:
+
+```bash
+./scripts/bootstrap_nova_sidecars.sh
+```
+
+If `.env.nova-sidecars` does not exist yet, the bootstrap script creates it from the example and stops so you can fill in repo paths and tokens.
+
 Validate the package first:
 
 ```bash
@@ -61,6 +69,8 @@ python scripts/validate_nova_sidecars.py \
   --env-file .env.nova-sidecars \
   --novaadapt-contract-check
 ```
+
+The repository CI now mirrors that contract check against the pinned NovaAdapt integration target and also runs a full sidecar smoke validation in containers.
 
 If the sidecars are already running and Codex Remote is pointed at them, validate the live stack too:
 
@@ -86,6 +96,7 @@ docker compose \
 Equivalent helper:
 
 ```bash
+./scripts/bootstrap_nova_sidecars.sh
 ./scripts/start_nova_sidecars.sh
 ```
 
