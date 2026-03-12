@@ -273,6 +273,9 @@ def _proxy_json_request(
         raise HTTPException(status_code=exc.code, detail=detail or exc.reason) from exc
     except URLError as exc:
         raise HTTPException(status_code=503, detail=f"Upstream unavailable: {exc.reason}") from exc
+    except OSError as exc:
+        detail = str(exc).strip() or exc.__class__.__name__
+        raise HTTPException(status_code=503, detail=f"Upstream unavailable: {detail}") from exc
 
 
 def _proxy_sse_stream(
@@ -300,6 +303,9 @@ def _proxy_sse_stream(
         raise HTTPException(status_code=exc.code, detail=detail or exc.reason) from exc
     except URLError as exc:
         raise HTTPException(status_code=503, detail=f"Upstream unavailable: {exc.reason}") from exc
+    except OSError as exc:
+        detail = str(exc).strip() or exc.__class__.__name__
+        raise HTTPException(status_code=503, detail=f"Upstream unavailable: {detail}") from exc
 
     def iterator():
         try:

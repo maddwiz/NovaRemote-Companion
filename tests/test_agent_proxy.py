@@ -1,4 +1,5 @@
 import contextlib
+from dataclasses import replace
 import json
 import os
 import socket
@@ -166,6 +167,80 @@ class AgentCapabilitiesRouteTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(first["cached"])
         self.assertFalse(second["cached"])
         self.assertEqual(probe_mock.await_count, 10)
+
+
+class OptionalServiceProbeResilienceTest(unittest.IsolatedAsyncioTestCase):
+    def test_proxy_json_request_degrades_connection_reset(self) -> None:
+        with patch.object(
+            server,
+            "urlopen",
+            side_effect=ConnectionResetError(54, "Connection reset by peer"),
+        ):
+            with self.assertRaises(server.HTTPException) as raised:
+                server._proxy_json_request(
+                    "http://127.0.0.1:9999",
+                    "/health",
+                    token=None,
+                    timeout=1.0,
+                )
+
+        exc = raised.exception
+        self.assertEqual(exc.status_code, 503)
+        self.assertEqual(exc.detail, "Upstream unavailable: [Errno 54] Connection reset by peer")
+
+    async def test_probe_optional_service_degrades_connection_reset(self) -> None:
+        with patch.object(
+            server,
+            "urlopen",
+            side_effect=ConnectionResetError(54, "Connection reset by peer"),
+        ):
+            result = await server._probe_optional_service(
+                "http://127.0.0.1:9999",
+                token=None,
+                path="/health",
+                timeout=1.0,
+            )
+
+        self.assertEqual(
+            result,
+            {
+                "configured": True,
+                "ok": False,
+                "detail": "Upstream unavailable: [Errno 54] Connection reset by peer",
+                "status_code": 503,
+            },
+        )
+
+    async def test_health_degrades_optional_service_transport_errors(self) -> None:
+        settings = replace(
+            server.SETTINGS,
+            novaadapt_bridge_url="http://127.0.0.1:9999",
+            novaspine_url="http://127.0.0.1:9998",
+        )
+        with (
+            patch.object(
+                server,
+                "SETTINGS",
+                settings,
+            ),
+            patch.object(
+                server,
+                "urlopen",
+                side_effect=[
+                    ConnectionResetError(54, "Connection reset by peer"),
+                    ConnectionResetError(54, "Connection reset by peer"),
+                ],
+            ),
+        ):
+            payload = await server.health()
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["novaadapt"]["configured"], True)
+        self.assertEqual(payload["novaadapt"]["ok"], False)
+        self.assertEqual(payload["novaadapt"]["status_code"], 503)
+        self.assertEqual(payload["novaspine"]["configured"], True)
+        self.assertEqual(payload["novaspine"]["ok"], False)
+        self.assertEqual(payload["novaspine"]["status_code"], 503)
 
 
 class AgentProxyHttpRouteTest(unittest.TestCase):
