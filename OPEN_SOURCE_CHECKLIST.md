@@ -28,7 +28,7 @@ This checklist gates open-sourcing Codex Remote as the public companion server f
 - [x] local validator checks package and live host
 - [x] live validation includes capability contract
 - [x] one-command bootstrap for sidecars is documented beyond local macOS flow
-- [ ] rollback examples verified on clean machine
+- [x] rollback examples verified on clean machine
 
 ## 4. CI and Verification
 

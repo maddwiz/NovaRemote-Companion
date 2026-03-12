@@ -11,7 +11,9 @@ services:
       - -lc
       - >-
         rm -rf /tmp/NovaSpine &&
-        cp -R /workspace/NovaSpine /tmp/NovaSpine &&
+        mkdir -p /tmp/NovaSpine &&
+        cp /workspace/NovaSpine/pyproject.toml /workspace/NovaSpine/README.md /tmp/NovaSpine/ &&
+        cp -R /workspace/NovaSpine/src /tmp/NovaSpine/src &&
         pip install --no-cache-dir /tmp/NovaSpine &&
         novaspine serve --host 0.0.0.0 --port 8420
     volumes:

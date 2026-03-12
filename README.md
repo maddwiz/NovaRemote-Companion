@@ -160,6 +160,8 @@ Start or stop the sidecars with the packaged helpers:
 ./scripts/stop_nova_sidecars.sh
 ```
 
+The bootstrap helper retries live validation for up to 90 seconds after the containers start. That extra wait is required on a clean restart because NovaSpine may need to build/install its package before `/api/v1/health` becomes reachable.
+
 This keeps the agent runtime and memory service decoupled from Codex Remote while giving the mobile app one server origin.
 
 ### Token rotation

@@ -56,6 +56,8 @@ One-command bootstrap:
 
 If `.env.nova-sidecars` does not exist yet, the bootstrap script creates it from the example and stops so you can fill in repo paths and tokens.
 
+`bootstrap_nova_sidecars.sh` now retries live validation for up to 90 seconds after `docker compose up -d --build`. This is intentional because the first NovaSpine boot may need extra time to install its Python package before the health endpoint is ready.
+
 Validate the package first:
 
 ```bash

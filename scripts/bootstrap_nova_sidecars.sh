@@ -20,6 +20,19 @@ docker compose \
   -f "${ROOT_DIR}/docker-compose.nova-sidecars.yml" \
   up -d --build
 
-python3 "${ROOT_DIR}/scripts/validate_nova_sidecars.py" --repo-root "${ROOT_DIR}" --env-file "${ENV_FILE}" --live-check
+ATTEMPTS=18
+SLEEP_SECONDS=5
+for (( attempt=1; attempt<=ATTEMPTS; attempt++ )); do
+  if python3 "${ROOT_DIR}/scripts/validate_nova_sidecars.py" --repo-root "${ROOT_DIR}" --env-file "${ENV_FILE}" --live-check; then
+    echo "Nova sidecars bootstrapped and validated."
+    exit 0
+  fi
 
-echo "Nova sidecars bootstrapped and validated."
+  if (( attempt == ATTEMPTS )); then
+    echo "Nova sidecars failed live validation after ${ATTEMPTS} attempts." >&2
+    exit 1
+  fi
+
+  echo "Waiting for Nova sidecars to become healthy (${attempt}/${ATTEMPTS})..."
+  sleep "${SLEEP_SECONDS}"
+done
