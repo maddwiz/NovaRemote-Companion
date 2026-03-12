@@ -134,12 +134,7 @@ def _extract_bearer(raw_auth: str | None) -> str | None:
 
 
 def _extract_http_token(request: Request) -> str | None:
-    token = _extract_bearer(request.headers.get("authorization"))
-    if token:
-        return token
-    # Browser-friendly fallback for loading the dashboard and websocket streams.
-    query_token = request.query_params.get("token", "").strip()
-    return query_token or None
+    return _extract_bearer(request.headers.get("authorization"))
 
 
 def _extract_ws_token(websocket: WebSocket) -> str | None:

@@ -269,6 +269,29 @@ class OptionalServiceProbeResilienceTest(unittest.IsolatedAsyncioTestCase):
 
 
 class AgentProxyHttpRouteTest(unittest.TestCase):
+    def test_protected_http_routes_reject_query_token_auth(self) -> None:
+        with _serve_app() as base_url:
+            request = urllib.request.Request(
+                f"{base_url}/health?token=test-token",
+                method="GET",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                urllib.request.urlopen(request, timeout=1)
+
+        error = raised.exception
+        try:
+            self.assertEqual(error.code, 401)
+        finally:
+            error.close()
+
+    def test_root_page_remains_browser_accessible_without_auth(self) -> None:
+        with _serve_app() as base_url:
+            with urllib.request.urlopen(f"{base_url}/", timeout=1) as response:
+                body = response.read().decode("utf-8", "replace")
+
+        self.assertEqual(response.status, 200)
+        self.assertIn("<!doctype html>", body.lower())
+
     def test_allowed_status_and_artifact_routes_reach_proxy_path(self) -> None:
         with (
             patch.object(server, "_ensure_novaadapt_enabled", return_value=None),
