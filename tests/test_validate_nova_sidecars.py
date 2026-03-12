@@ -16,6 +16,7 @@ from scripts.validate_nova_sidecars import (  # noqa: E402
     validate_compose_text,
     validate_env_values,
     validate_live_runtime,
+    validate_novaadapt_repo_contract,
 )
 
 
@@ -174,6 +175,15 @@ class ValidateNovaSidecarsTest(unittest.TestCase):
             )
         )
 
+    def test_validate_novaadapt_repo_contract_flags_missing_repo(self) -> None:
+        issues = validate_novaadapt_repo_contract(ROOT, ROOT / "does-not-exist")
+        self.assertTrue(any(issue.level == "ERROR" and "does not exist" in issue.message for issue in issues))
+
+    @unittest.skipUnless((ROOT.parent / "NovaAdapt").exists(), "sibling NovaAdapt repo required")
+    def test_validate_novaadapt_repo_contract_accepts_local_checkout(self) -> None:
+        issues = validate_novaadapt_repo_contract(ROOT, ROOT.parent / "NovaAdapt")
+        self.assertEqual([], [issue for issue in issues if issue.level == "ERROR"])
+
     def test_main_allows_missing_env_file_during_live_check(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -197,6 +207,25 @@ class ValidateNovaSidecarsTest(unittest.TestCase):
                         "--live-check",
                         "--config-file",
                         str(config_path),
+                    ]
+                )
+
+            self.assertEqual(0, result)
+
+    def test_main_runs_novaadapt_contract_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            (repo_root / "docker-compose.nova-sidecars.yml").write_text(
+                (ROOT / "docker-compose.nova-sidecars.yml").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            with patch.object(validate_module, "validate_novaadapt_repo_contract", return_value=[]):
+                result = validate_module.main(
+                    [
+                        "--repo-root",
+                        str(repo_root),
+                        "--compose-only",
+                        "--novaadapt-contract-check",
                     ]
                 )
 

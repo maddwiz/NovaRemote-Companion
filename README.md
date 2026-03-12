@@ -109,6 +109,14 @@ Validate the sidecar package before running Docker:
 python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars
 ```
 
+Validate the checked-out NovaAdapt branch against the companion contract before merging runtime upgrades:
+
+```bash
+python scripts/validate_nova_sidecars.py \
+  --env-file .env.nova-sidecars \
+  --novaadapt-contract-check
+```
+
 Validate the running host + sidecars end-to-end:
 
 ```bash

@@ -54,6 +54,14 @@ Validate the package first:
 python scripts/validate_nova_sidecars.py --env-file .env.nova-sidecars
 ```
 
+Validate the frozen local NovaAdapt checkout against the companion contract before you merge runtime upgrades:
+
+```bash
+python scripts/validate_nova_sidecars.py \
+  --env-file .env.nova-sidecars \
+  --novaadapt-contract-check
+```
+
 If the sidecars are already running and Codex Remote is pointed at them, validate the live stack too:
 
 ```bash
