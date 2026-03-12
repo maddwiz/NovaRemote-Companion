@@ -125,6 +125,13 @@ class ValidateNovaSidecarsTest(unittest.TestCase):
                         "workflows": True,
                         "templates": False,
                         "templateGallery": False,
+                        "controlArtifacts": True,
+                        "mobileStatus": True,
+                        "browserStatus": True,
+                        "voiceStatus": True,
+                        "canvasStatus": True,
+                        "homeAssistantStatus": True,
+                        "mqttStatus": True,
                     },
                 }
             raise AssertionError(f"unexpected url: {url}")
@@ -171,6 +178,7 @@ class ValidateNovaSidecarsTest(unittest.TestCase):
                 issue.level == "ERROR"
                 and "missing keys" in issue.message
                 and "workflows" in issue.message
+                and "controlArtifacts" in issue.message
                 for issue in issues
             )
         )

@@ -63,6 +63,28 @@ REQUIRED_NOVAADAPT_OPENAPI_PATHS = (
     "/agents/gallery",
     "/agents/templates/import",
     "/agents/templates/{template_id}/launch",
+    "/browser/status",
+    "/voice/status",
+    "/canvas/status",
+    "/mobile/status",
+    "/iot/homeassistant/status",
+    "/iot/mqtt/status",
+    "/control/artifacts",
+)
+
+REQUIRED_COMPANION_CAPABILITY_KEYS = (
+    "memoryStatus",
+    "governance",
+    "workflows",
+    "templates",
+    "templateGallery",
+    "controlArtifacts",
+    "mobileStatus",
+    "browserStatus",
+    "voiceStatus",
+    "canvasStatus",
+    "homeAssistantStatus",
+    "mqttStatus",
 )
 
 
@@ -506,14 +528,7 @@ def validate_live_runtime(config_values: dict[str, str]) -> list[ValidationIssue
             if not isinstance(capabilities, dict):
                 issues.append(ValidationIssue("ERROR", "Codex Remote /agents/capabilities did not return a capabilities object"))
             else:
-                required_capability_keys = (
-                    "memoryStatus",
-                    "governance",
-                    "workflows",
-                    "templates",
-                    "templateGallery",
-                )
-                missing_keys = [key for key in required_capability_keys if key not in capabilities]
+                missing_keys = [key for key in REQUIRED_COMPANION_CAPABILITY_KEYS if key not in capabilities]
                 if missing_keys:
                     issues.append(
                         ValidationIssue(

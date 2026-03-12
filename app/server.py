@@ -360,7 +360,7 @@ def _optional_route_supported(result: dict[str, Any]) -> bool:
 
 
 async def _compute_novaadapt_capabilities() -> dict[str, bool]:
-    memory_status, governance, workflows, templates, template_gallery = await asyncio.gather(
+    memory_status, governance, workflows, templates, template_gallery, control_artifacts, mobile_status, browser_status, voice_status, canvas_status, homeassistant_status, mqtt_status = await asyncio.gather(
         _probe_optional_service(
             SETTINGS.novaadapt_bridge_url,
             token=SETTINGS.novaadapt_bridge_token,
@@ -393,6 +393,49 @@ async def _compute_novaadapt_capabilities() -> dict[str, bool]:
             path="/gallery",
             timeout=SETTINGS.novaadapt_timeout_seconds,
         ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/control/artifacts",
+            query=[("limit", "1")],
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/mobile/status",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/browser/status",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/voice/status",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/canvas/status",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/iot/homeassistant/status",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
+        _probe_optional_service(
+            SETTINGS.novaadapt_bridge_url,
+            token=SETTINGS.novaadapt_bridge_token,
+            path="/iot/mqtt/status",
+            timeout=SETTINGS.novaadapt_timeout_seconds,
+        ),
     )
     return {
         "memoryStatus": _optional_route_supported(memory_status),
@@ -400,6 +443,13 @@ async def _compute_novaadapt_capabilities() -> dict[str, bool]:
         "workflows": _optional_route_supported(workflows),
         "templates": _optional_route_supported(templates),
         "templateGallery": _optional_route_supported(template_gallery),
+        "controlArtifacts": _optional_route_supported(control_artifacts),
+        "mobileStatus": _optional_route_supported(mobile_status),
+        "browserStatus": _optional_route_supported(browser_status),
+        "voiceStatus": _optional_route_supported(voice_status),
+        "canvasStatus": _optional_route_supported(canvas_status),
+        "homeAssistantStatus": _optional_route_supported(homeassistant_status),
+        "mqttStatus": _optional_route_supported(mqtt_status),
     }
 
 

@@ -133,13 +133,20 @@ class AgentCapabilitiesRouteTest(unittest.IsolatedAsyncioTestCase):
                     {"configured": True, "status_code": 404, "detail": "missing"},
                     {"configured": True, "ok": True},
                     {"configured": True, "status_code": 404, "detail": "missing"},
+                    {"configured": True, "ok": True},
+                    {"configured": True, "status_code": 404, "detail": "missing"},
+                    {"configured": True, "ok": True},
+                    {"configured": True, "status_code": 404, "detail": "missing"},
+                    {"configured": True, "ok": True},
+                    {"configured": True, "status_code": 404, "detail": "missing"},
+                    {"configured": True, "ok": True},
                 ]
             ),
         ) as probe_mock:
             first = await server.novaadapt_capabilities(force=False)
             second = await server.novaadapt_capabilities(force=False)
 
-        self.assertEqual(probe_mock.await_count, 5)
+        self.assertEqual(probe_mock.await_count, 12)
         self.assertFalse(first["cached"])
         self.assertTrue(second["cached"])
         self.assertEqual(first["protocol_version"], server.COMPANION_PROTOCOL_VERSION)
@@ -152,6 +159,13 @@ class AgentCapabilitiesRouteTest(unittest.IsolatedAsyncioTestCase):
                 "workflows": False,
                 "templates": True,
                 "templateGallery": False,
+                "controlArtifacts": True,
+                "mobileStatus": False,
+                "browserStatus": True,
+                "voiceStatus": False,
+                "canvasStatus": True,
+                "homeAssistantStatus": False,
+                "mqttStatus": True,
             },
         )
 
@@ -159,14 +173,14 @@ class AgentCapabilitiesRouteTest(unittest.IsolatedAsyncioTestCase):
         with patch.object(
             server,
             "_probe_optional_service",
-            new=AsyncMock(side_effect=[{"configured": True, "ok": True}] * 10),
+            new=AsyncMock(side_effect=[{"configured": True, "ok": True}] * 24),
         ) as probe_mock:
             first = await server.novaadapt_capabilities(force=False)
             second = await server.novaadapt_capabilities(force=True)
 
         self.assertFalse(first["cached"])
         self.assertFalse(second["cached"])
-        self.assertEqual(probe_mock.await_count, 10)
+        self.assertEqual(probe_mock.await_count, 24)
 
 
 class OptionalServiceProbeResilienceTest(unittest.IsolatedAsyncioTestCase):
